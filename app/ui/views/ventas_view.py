@@ -20,6 +20,7 @@ from app.ui import theme
 from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
 from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
+from app.ui.dialogs.consulta_precio_dialog import ConsultaPrecioDialog
 
 
 def _money(d: Decimal) -> str:
@@ -46,11 +47,20 @@ class VentasView(ctk.CTkFrame):
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(1, weight=1)
 
+        scanbar = ctk.CTkFrame(main, fg_color="transparent")
+        scanbar.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        scanbar.grid_columnconfigure(0, weight=1)
         self.entry_scan = ctk.CTkEntry(
-            main, placeholder_text="Escaneá un código o buscá un producto…",
+            scanbar, placeholder_text="Escaneá un código o buscá un producto…",
             font=theme.fuente(16), height=48, corner_radius=10)
-        self.entry_scan.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        self.entry_scan.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.entry_scan.bind("<Return>", self._on_scan)
+        ctk.CTkButton(scanbar, text="Consultar precio (F2)", width=170,
+                      height=48, corner_radius=10, font=theme.fuente(14),
+                      fg_color="transparent", text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST,
+                      hover_color=theme.GHOST,
+                      command=self._consultar_precio).grid(row=0, column=1)
 
         self.tabla = ctk.CTkScrollableFrame(main, fg_color=theme.CARD_BG,
                                             corner_radius=12)
@@ -90,6 +100,7 @@ class VentasView(ctk.CTkFrame):
             row=1, column=0, sticky="ew", pady=(8, 0))
 
         self.winfo_toplevel().bind("<F12>", lambda _e: self._cobrar())
+        self.winfo_toplevel().bind("<F2>", lambda _e: self._consultar_precio())
         self._refrescar()
         self.after(120, self.entry_scan.focus_set)
 
@@ -113,6 +124,11 @@ class VentasView(ctk.CTkFrame):
                 self.entry_scan.focus_set()
                 return
         self._agregar(prod)
+        self.entry_scan.focus_set()
+
+    def _consultar_precio(self) -> None:
+        """Abre la consulta de precio. No toca el carrito."""
+        ConsultaPrecioDialog(self).mostrar()
         self.entry_scan.focus_set()
 
     def _agregar(self, producto) -> None:
