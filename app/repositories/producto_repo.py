@@ -60,3 +60,61 @@ def descontar_stock(conn: sqlite3.Connection, producto_id: str,
         "UPDATE productos SET stock_actual = ?, updated_at = ? WHERE id = ?",
         (str(nuevo_stock), ahora_iso(), producto_id),
     )
+
+
+# --- Sincronización desde la nube (nube -> local) --------------------------
+
+def _ib(v) -> int:
+    """bool/valor de Postgres -> 0/1 de SQLite."""
+    return 1 if v else 0
+
+
+def _txt(v) -> str:
+    """Decimal/numérico de Postgres -> texto (mantiene precisión)."""
+    return str(v)
+
+
+def _ts(v) -> str:
+    """datetime de Postgres -> ISO8601 texto."""
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
+    """Aplica un producto traído de Neon.
+
+    Si ya existe localmente, actualiza SOLO catálogo y precios: NUNCA toca
+    stock_actual, porque el stock es autoritativo en el local (lo descuentan
+    las ventas). Si es nuevo, lo inserta completo (incluido su stock inicial)."""
+    existe = conn.execute(
+        "SELECT 1 FROM productos WHERE id = ?", (fila["id"],)
+    ).fetchone()
+
+    if existe:
+        conn.execute(
+            """UPDATE productos SET
+                 codigo_barra = ?, nombre = ?, categoria_id = ?, es_pesable = ?,
+                 unidad_medida = ?, precio_venta = ?, costo_compra = ?,
+                 stock_minimo = ?, controla_stock = ?, controla_vencimiento = ?,
+                 activo = ?, updated_at = ?
+               WHERE id = ?""",
+            (fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
+             _ib(fila["es_pesable"]), fila["unidad_medida"],
+             _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
+             _txt(fila["stock_minimo"]), _ib(fila["controla_stock"]),
+             _ib(fila["controla_vencimiento"]), _ib(fila["activo"]),
+             _ts(fila["updated_at"]), fila["id"]),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO productos
+                 (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
+                  precio_venta, costo_compra, stock_actual, stock_minimo,
+                  controla_stock, controla_vencimiento, activo, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (fila["id"], fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
+             _ib(fila["es_pesable"]), fila["unidad_medida"],
+             _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
+             _txt(fila["stock_actual"]), _txt(fila["stock_minimo"]),
+             _ib(fila["controla_stock"]), _ib(fila["controla_vencimiento"]),
+             _ib(fila["activo"]), _ts(fila["updated_at"])),
+        )

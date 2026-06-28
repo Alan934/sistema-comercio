@@ -18,6 +18,7 @@ ASSETS_DIR = BASE_DIR / "assets"
 # --- Base de datos local (SQLite) ------------------------------------------
 LOCAL_DB_PATH = DATA_DIR / "kiosko.db"
 SCHEMA_LOCAL_PATH = DATA_DIR / "schema_local.sql"
+SCHEMA_CLOUD_PATH = DATA_DIR / "schema_cloud.sql"
 
 # --- Base de datos nube (Neon PostgreSQL) ----------------------------------
 NEON_DSN = os.getenv("NEON_DATABASE_URL", "")

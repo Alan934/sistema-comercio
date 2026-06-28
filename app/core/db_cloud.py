@@ -24,3 +24,18 @@ def connect():
     if not settings.NEON_DSN:
         raise RuntimeError("Falta NEON_DATABASE_URL en el archivo .env.")
     return psycopg.connect(settings.NEON_DSN)
+
+
+def asegurar_schema(conn) -> None:
+    """Crea las tablas en Neon si no existen. Ejecuta cada sentencia por
+    separado (psycopg no corre varias en un mismo execute)."""
+    sql = settings.SCHEMA_CLOUD_PATH.read_text(encoding="utf-8")
+    # Quita líneas de comentario antes de partir por ';'.
+    lineas = [ln for ln in sql.splitlines() if not ln.strip().startswith("--")]
+    limpio = "\n".join(lineas)
+    with conn.cursor() as cur:
+        for sentencia in limpio.split(";"):
+            s = sentencia.strip()
+            if s:
+                cur.execute(s)
+    conn.commit()

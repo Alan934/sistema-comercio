@@ -40,8 +40,35 @@ def guardar(conn: sqlite3.Connection, venta: Venta,
 
 
 def contar_pendientes_sync(conn: sqlite3.Connection) -> int:
-    """Cuántas ventas están sin subir a la nube (para el futuro sync_manager)."""
+    """Cuántas ventas están sin subir a la nube."""
     row = conn.execute(
         "SELECT COUNT(*) AS n FROM ventas WHERE sincronizado = 0"
     ).fetchone()
     return row["n"]
+
+
+# --- Lectura para sincronización (local -> nube) ---------------------------
+
+def obtener_pendientes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Ventas que todavía no se subieron, más viejas primero."""
+    return conn.execute(
+        "SELECT * FROM ventas WHERE sincronizado = 0 ORDER BY created_at"
+    ).fetchall()
+
+
+def obtener_detalle(conn: sqlite3.Connection, venta_id: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM ventas_detalle WHERE venta_id = ?", (venta_id,)
+    ).fetchall()
+
+
+def obtener_pagos(conn: sqlite3.Connection, venta_id: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM pagos_venta WHERE venta_id = ?", (venta_id,)
+    ).fetchall()
+
+
+def marcar_sincronizada(conn: sqlite3.Connection, venta_id: str) -> None:
+    conn.execute(
+        "UPDATE ventas SET sincronizado = 1 WHERE id = ?", (venta_id,)
+    )
