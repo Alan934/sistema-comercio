@@ -15,3 +15,5 @@ class Producto:
     stock_actual: Decimal
     controla_stock: bool
     activo: bool
+    categoria_id: str | None = None
+    margen_pct: Decimal | None = None   # override del margen de la categoría

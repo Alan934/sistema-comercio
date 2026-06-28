@@ -2,14 +2,21 @@
 from datetime import date
 from decimal import Decimal
 
-from app.core import db_local
+from app.core import db_local, pricing
 from app.core.utils import ahora_iso, nuevo_id
 from app.models.producto import Producto
-from app.repositories import producto_repo, lote_repo
+from app.repositories import producto_repo, lote_repo, categoria_repo
 
 
 class StockError(Exception):
     """Error de negocio esperable."""
+
+
+def _a_margen(valor) -> Decimal | None:
+    """Texto/None -> Decimal o None (margen vacío = usar el de la categoría)."""
+    if valor is None or str(valor).strip() == "":
+        return None
+    return Decimal(str(valor).replace(",", "."))
 
 
 def _normalizar(datos: dict, *, con_id: bool) -> dict:
@@ -17,10 +24,12 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
     nombre = (datos.get("nombre") or "").strip()
     if not nombre:
         raise StockError("El producto necesita un nombre.")
+    margen = _a_margen(datos.get("margen_pct"))
     completo = {
         "codigo_barra": (datos.get("codigo_barra") or None),
         "nombre": nombre,
         "categoria_id": datos.get("categoria_id"),
+        "margen_pct": str(margen) if margen is not None else None,
         "es_pesable": 1 if datos.get("es_pesable") else 0,
         "unidad_medida": datos.get("unidad_medida") or ("KG" if datos.get("es_pesable") else "UN"),
         "costo_compra": str(datos.get("costo_compra", "0")),
@@ -36,6 +45,21 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
     return completo
 
 
+def _aplicar_margen(conn, completo: dict) -> None:
+    """Si hay margen efectivo (producto o categoría), pisa precio_venta con el
+    calculado a partir del costo. Si no hay margen, deja el precio manual."""
+    margen_prod = _a_margen(completo.get("margen_pct"))
+    margen_cat = None
+    if completo.get("categoria_id"):
+        cat = categoria_repo.obtener(conn, completo["categoria_id"])
+        if cat is not None:
+            margen_cat = cat.margen_pct
+    margen = pricing.margen_efectivo(margen_prod, margen_cat)
+    if margen is not None:
+        completo["precio_venta"] = str(
+            pricing.precio_desde_margen(completo["costo_compra"], margen))
+
+
 def crear_producto(datos: dict) -> str:
     """Alta de producto. Devuelve el id generado."""
     completo = _normalizar(datos, con_id=False)
@@ -44,6 +68,7 @@ def crear_producto(datos: dict) -> str:
     conn = db_local.connect()
     try:
         with conn:
+            _aplicar_margen(conn, completo)
             producto_repo.crear(conn, completo)
     finally:
         conn.close()
@@ -56,6 +81,7 @@ def actualizar_producto(producto_id: str, datos: dict) -> None:
     conn = db_local.connect()
     try:
         with conn:
+            _aplicar_margen(conn, completo)
             producto_repo.actualizar(conn, completo)
     finally:
         conn.close()

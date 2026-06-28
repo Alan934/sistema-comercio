@@ -43,6 +43,9 @@ def registrar_compra(proveedor_id: str, items: list[ItemCompra],
             compra_repo.guardar(conn, compra, items)
             for it in items:
                 producto_repo.actualizar_costo(conn, it.producto_id, it.costo_unitario)
+                # Si el producto tiene margen (propio o por categoría), el precio
+                # se reajusta solo al nuevo costo; si no, queda el precio manual.
+                producto_repo.recalcular_precio(conn, it.producto_id)
                 producto_repo.aumentar_stock(conn, it.producto_id, it.cantidad)
                 if it.fecha_vencimiento:
                     lote_repo.crear(conn, it.producto_id, it.fecha_vencimiento,

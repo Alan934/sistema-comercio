@@ -44,29 +44,32 @@ def _pull_catalogo(local, cloud) -> int:
     """Baja categorías y productos. Devuelve cuántos productos se aplicaron."""
     aplicados = 0
     with cloud.cursor(row_factory=dict_row) as cur:
-        cur.execute("SELECT id, nombre, activo, updated_at FROM categorias")
+        cur.execute("SELECT id, nombre, margen_pct, activo, updated_at FROM categorias")
         for cat in cur.fetchall():
+            margen = str(cat["margen_pct"]) if cat["margen_pct"] is not None else None
             existe = local.execute(
                 "SELECT 1 FROM categorias WHERE id = ?", (cat["id"],)
             ).fetchone()
             if existe:
                 local.execute(
-                    "UPDATE categorias SET nombre=?, activo=?, updated_at=? WHERE id=?",
-                    (cat["nombre"], 1 if cat["activo"] else 0,
+                    "UPDATE categorias SET nombre=?, margen_pct=?, activo=?, "
+                    "updated_at=? WHERE id=?",
+                    (cat["nombre"], margen, 1 if cat["activo"] else 0,
                      cat["updated_at"].isoformat(), cat["id"]),
                 )
             else:
                 local.execute(
-                    "INSERT INTO categorias (id, nombre, activo, updated_at) VALUES (?,?,?,?)",
-                    (cat["id"], cat["nombre"], 1 if cat["activo"] else 0,
+                    "INSERT INTO categorias (id, nombre, margen_pct, activo, "
+                    "updated_at) VALUES (?,?,?,?,?)",
+                    (cat["id"], cat["nombre"], margen, 1 if cat["activo"] else 0,
                      cat["updated_at"].isoformat()),
                 )
 
         cur.execute(
             """SELECT id, codigo_barra, nombre, categoria_id, es_pesable,
-                      unidad_medida, precio_venta, costo_compra, stock_actual,
-                      stock_minimo, controla_stock, controla_vencimiento,
-                      activo, updated_at
+                      unidad_medida, precio_venta, costo_compra, margen_pct,
+                      stock_actual, stock_minimo, controla_stock,
+                      controla_vencimiento, activo, updated_at
                FROM productos"""
         )
         for prod in cur.fetchall():

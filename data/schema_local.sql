@@ -12,6 +12,7 @@
 CREATE TABLE IF NOT EXISTS categorias (
     id          TEXT PRIMARY KEY,
     nombre      TEXT NOT NULL,
+    margen_pct  NUMERIC(6,2),                 -- margen de ganancia por defecto (%)
     activo      INTEGER NOT NULL DEFAULT 1,
     updated_at  TEXT NOT NULL
 );
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS productos (
     unidad_medida        TEXT NOT NULL DEFAULT 'UN',
     costo_compra         NUMERIC(12,2) NOT NULL DEFAULT 0,
     precio_venta         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    margen_pct           NUMERIC(6,2),                -- override del margen (NULL = usa la categoría)
     stock_actual         NUMERIC(12,3) NOT NULL DEFAULT 0,
     stock_minimo         NUMERIC(12,3) NOT NULL DEFAULT 0,
     controla_stock       INTEGER NOT NULL DEFAULT 1,

@@ -14,6 +14,7 @@
 CREATE TABLE IF NOT EXISTS categorias (
     id          TEXT PRIMARY KEY,
     nombre      TEXT NOT NULL,
+    margen_pct  NUMERIC(6,2),
     activo      BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at  TIMESTAMPTZ NOT NULL
 );
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS productos (
     unidad_medida        TEXT NOT NULL DEFAULT 'UN',
     costo_compra         NUMERIC(12,2) NOT NULL DEFAULT 0,
     precio_venta         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    margen_pct           NUMERIC(6,2),
     stock_actual         NUMERIC(12,3) NOT NULL DEFAULT 0,
     stock_minimo         NUMERIC(12,3) NOT NULL DEFAULT 0,
     controla_stock       BOOLEAN NOT NULL DEFAULT TRUE,

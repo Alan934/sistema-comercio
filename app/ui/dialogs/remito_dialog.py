@@ -8,14 +8,19 @@ RemitoDialog devuelve un dict listo para compra_service.registrar_compra:
 o None si se cancela.
 """
 import tkinter as tk
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import customtkinter as ctk
 
 from app.models.compra import ItemCompra, CONTADO, CUENTA_CORRIENTE
 from app.services import venta_service, proveedor_service
+from app.ui import theme
 from app.ui.dialogs.base import ModalBase
 from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
+
+CENTAVOS = Decimal("0.01")
+POR_UNIDAD = "Por unidad"
+POR_TOTAL = "Por el total"
 
 
 def _num(texto: str, permite_cero: bool = True) -> Decimal | None:
@@ -32,57 +37,106 @@ def _num(texto: str, permite_cero: bool = True) -> Decimal | None:
 
 
 class ItemRemitoDialog(ModalBase):
-    """Carga un renglón del remito para un producto ya identificado."""
+    """Carga un renglón del remito. El costo se puede ingresar por unidad o
+    por el total pagado por la cantidad; el sistema calcula el otro."""
 
     def __init__(self, master, producto):
         super().__init__(master, "Agregar al remito")
         self.producto = producto
 
-        ctk.CTkLabel(self, text=producto.nombre, font=("", 16, "bold")).grid(
-            row=0, column=0, columnspan=2, padx=20, pady=(18, 10))
+        ctk.CTkLabel(self, text=producto.nombre, font=theme.fuente(16, "bold")
+                     ).grid(row=0, column=0, columnspan=2, padx=20, pady=(18, 10))
 
         ctk.CTkLabel(self, text="Cantidad recibida", anchor="w").grid(
             row=1, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_cant = ctk.CTkEntry(self, width=180)
+        self.ent_cant = ctk.CTkEntry(self, width=200)
         self.ent_cant.insert(0, "1")
         self.ent_cant.grid(row=1, column=1, padx=(8, 20), pady=6)
+        self.ent_cant.bind("<KeyRelease>", self._recalcular)
 
-        ctk.CTkLabel(self, text="Costo unitario", anchor="w").grid(
+        ctk.CTkLabel(self, text="Cargar el costo", anchor="w").grid(
             row=2, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_costo = ctk.CTkEntry(self, width=180)
+        self.seg_modo = ctk.CTkSegmentedButton(
+            self, values=[POR_UNIDAD, POR_TOTAL],
+            selected_color=theme.PRIMARY, selected_hover_color=theme.PRIMARY_HOVER,
+            command=lambda _v: self._cambiar_modo())
+        self.seg_modo.set(POR_UNIDAD)
+        self.seg_modo.grid(row=2, column=1, padx=(8, 20), pady=6, sticky="w")
+
+        self.lbl_costo = ctk.CTkLabel(self, text="Costo por unidad", anchor="w")
+        self.lbl_costo.grid(row=3, column=0, sticky="w", padx=(20, 8), pady=6)
+        self.ent_costo = ctk.CTkEntry(self, width=200)
         self.ent_costo.insert(0, str(producto.costo_compra))
-        self.ent_costo.grid(row=2, column=1, padx=(8, 20), pady=6)
+        self.ent_costo.grid(row=3, column=1, padx=(8, 20), pady=6)
+        self.ent_costo.bind("<KeyRelease>", self._recalcular)
+
+        self.lbl_calculo = ctk.CTkLabel(self, text="", anchor="w",
+                                        font=theme.fuente(13),
+                                        text_color=theme.ACCENT)
+        self.lbl_calculo.grid(row=4, column=0, columnspan=2, sticky="w", padx=20)
 
         ctk.CTkLabel(self, text="Vencimiento (opcional)", anchor="w").grid(
-            row=3, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_venc = ctk.CTkEntry(self, width=180, placeholder_text="AAAA-MM-DD")
-        self.ent_venc.grid(row=3, column=1, padx=(8, 20), pady=6)
+            row=5, column=0, sticky="w", padx=(20, 8), pady=6)
+        self.ent_venc = ctk.CTkEntry(self, width=200, placeholder_text="AAAA-MM-DD")
+        self.ent_venc.grid(row=5, column=1, padx=(8, 20), pady=6)
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
-        self.lbl_error.grid(row=4, column=0, columnspan=2, padx=20)
+        self.lbl_error.grid(row=6, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
-        cont.grid(row=5, column=0, columnspan=2, pady=(8, 20))
+        cont.grid(row=7, column=0, columnspan=2, pady=(8, 20))
         ctk.CTkButton(cont, text="Cancelar", width=110, fg_color="gray",
                       command=self._cancelar).pack(side="left", padx=8)
-        ctk.CTkButton(cont, text="Agregar", width=130,
+        ctk.CTkButton(cont, text="Agregar", width=130, fg_color=theme.PRIMARY,
+                      hover_color=theme.PRIMARY_HOVER,
                       command=self._confirmar).pack(side="left", padx=8)
 
         self.after(50, self.ent_cant.focus_set)
+        self._recalcular()
+
+    def _por_total(self) -> bool:
+        return self.seg_modo.get() == POR_TOTAL
+
+    def _costo_unitario(self) -> Decimal | None:
+        """Resuelve el costo unitario según el modo elegido."""
+        cant = _num(self.ent_cant.get(), permite_cero=False)
+        costo = _num(self.ent_costo.get())
+        if cant is None or costo is None:
+            return None
+        if self._por_total():
+            return (costo / cant).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
+        return costo
+
+    def _cambiar_modo(self) -> None:
+        self.lbl_costo.configure(
+            text="Costo total pagado" if self._por_total() else "Costo por unidad")
+        self._recalcular()
+
+    def _recalcular(self, _event=None) -> None:
+        unitario = self._costo_unitario()
+        if unitario is None:
+            self.lbl_calculo.configure(text="")
+            return
+        cant = _num(self.ent_cant.get(), permite_cero=False)
+        if self._por_total():
+            self.lbl_calculo.configure(text=f"→ Cada uno: ${unitario:,.2f}")
+        else:
+            total = (unitario * cant).quantize(CENTAVOS)
+            self.lbl_calculo.configure(text=f"→ Total: ${total:,.2f}")
 
     def _confirmar(self) -> None:
         cant = _num(self.ent_cant.get(), permite_cero=False)
         if cant is None:
             self.lbl_error.configure(text="⚠ Cantidad inválida (> 0)")
             return
-        costo = _num(self.ent_costo.get())
-        if costo is None:
+        unitario = self._costo_unitario()
+        if unitario is None:
             self.lbl_error.configure(text="⚠ Costo inválido")
             return
         venc = self.ent_venc.get().strip() or None
         self._aceptar(ItemCompra(
             producto_id=self.producto.id, cantidad=cant,
-            costo_unitario=costo, fecha_vencimiento=venc))
+            costo_unitario=unitario, fecha_vencimiento=venc))
 
 
 class RemitoDialog(ModalBase):

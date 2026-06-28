@@ -3,11 +3,13 @@ para poder participar de una transacción más grande (ej. una venta)."""
 import sqlite3
 from decimal import Decimal
 
+from app.core import pricing
 from app.core.utils import ahora_iso
 from app.models.producto import Producto
 
 _COLS = ("id, codigo_barra, nombre, es_pesable, unidad_medida, "
-         "precio_venta, costo_compra, stock_actual, controla_stock, activo")
+         "precio_venta, costo_compra, stock_actual, controla_stock, activo, "
+         "categoria_id, margen_pct")
 
 
 def _to_producto(row: sqlite3.Row) -> Producto:
@@ -22,6 +24,9 @@ def _to_producto(row: sqlite3.Row) -> Producto:
         stock_actual=Decimal(str(row["stock_actual"])),
         controla_stock=bool(row["controla_stock"]),
         activo=bool(row["activo"]),
+        categoria_id=row["categoria_id"],
+        margen_pct=(Decimal(str(row["margen_pct"]))
+                    if row["margen_pct"] is not None else None),
     )
 
 
@@ -66,11 +71,11 @@ def crear(conn: sqlite3.Connection, datos: dict) -> None:
     conn.execute(
         """INSERT INTO productos
              (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
-              costo_compra, precio_venta, stock_actual, stock_minimo,
+              costo_compra, precio_venta, margen_pct, stock_actual, stock_minimo,
               controla_stock, controla_vencimiento, activo, updated_at)
            VALUES
              (:id, :codigo_barra, :nombre, :categoria_id, :es_pesable, :unidad_medida,
-              :costo_compra, :precio_venta, :stock_actual, :stock_minimo,
+              :costo_compra, :precio_venta, :margen_pct, :stock_actual, :stock_minimo,
               :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
         datos,
     )
@@ -83,7 +88,8 @@ def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
              codigo_barra = :codigo_barra, nombre = :nombre,
              categoria_id = :categoria_id, es_pesable = :es_pesable,
              unidad_medida = :unidad_medida, costo_compra = :costo_compra,
-             precio_venta = :precio_venta, stock_minimo = :stock_minimo,
+             precio_venta = :precio_venta, margen_pct = :margen_pct,
+             stock_minimo = :stock_minimo,
              controla_stock = :controla_stock,
              controla_vencimiento = :controla_vencimiento,
              activo = :activo, updated_at = :updated_at
@@ -111,6 +117,35 @@ def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
     conn.execute(
         "UPDATE productos SET costo_compra = ?, updated_at = ? WHERE id = ?",
         (str(costo), ahora_iso(), producto_id),
+    )
+
+
+def ids_por_categoria(conn: sqlite3.Connection, categoria_id: str) -> list[str]:
+    return [r["id"] for r in conn.execute(
+        "SELECT id FROM productos WHERE categoria_id = ?", (categoria_id,)).fetchall()]
+
+
+def recalcular_precio(conn: sqlite3.Connection, producto_id: str) -> None:
+    """Recalcula precio_venta = costo * (1 + margen/100) usando el margen
+    efectivo (producto o, si no tiene, su categoría). Si no hay margen en
+    ninguno, deja el precio como está (es manual)."""
+    row = conn.execute(
+        """SELECT p.costo_compra AS costo, p.margen_pct AS pm, c.margen_pct AS cm
+           FROM productos p LEFT JOIN categorias c ON c.id = p.categoria_id
+           WHERE p.id = ?""",
+        (producto_id,),
+    ).fetchone()
+    if row is None:
+        return
+    pm = Decimal(str(row["pm"])) if row["pm"] is not None else None
+    cm = Decimal(str(row["cm"])) if row["cm"] is not None else None
+    margen = pricing.margen_efectivo(pm, cm)
+    if margen is None:
+        return
+    precio = pricing.precio_desde_margen(row["costo"], margen)
+    conn.execute(
+        "UPDATE productos SET precio_venta = ?, updated_at = ? WHERE id = ?",
+        (str(precio), ahora_iso(), producto_id),
     )
 
 
@@ -159,6 +194,11 @@ def _ts(v) -> str:
     return v.isoformat() if hasattr(v, "isoformat") else str(v)
 
 
+def _txt_null(v):
+    """Numérico opcional de Postgres -> texto o None."""
+    return str(v) if v is not None else None
+
+
 def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
     """Aplica un producto traído de Neon.
 
@@ -174,27 +214,28 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
             """UPDATE productos SET
                  codigo_barra = ?, nombre = ?, categoria_id = ?, es_pesable = ?,
                  unidad_medida = ?, precio_venta = ?, costo_compra = ?,
-                 stock_minimo = ?, controla_stock = ?, controla_vencimiento = ?,
-                 activo = ?, updated_at = ?
+                 margen_pct = ?, stock_minimo = ?, controla_stock = ?,
+                 controla_vencimiento = ?, activo = ?, updated_at = ?
                WHERE id = ?""",
             (fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
-             _txt(fila["stock_minimo"]), _ib(fila["controla_stock"]),
-             _ib(fila["controla_vencimiento"]), _ib(fila["activo"]),
-             _ts(fila["updated_at"]), fila["id"]),
+             _txt_null(fila.get("margen_pct")), _txt(fila["stock_minimo"]),
+             _ib(fila["controla_stock"]), _ib(fila["controla_vencimiento"]),
+             _ib(fila["activo"]), _ts(fila["updated_at"]), fila["id"]),
         )
     else:
         conn.execute(
             """INSERT INTO productos
                  (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
-                  precio_venta, costo_compra, stock_actual, stock_minimo,
+                  precio_venta, costo_compra, margen_pct, stock_actual, stock_minimo,
                   controla_stock, controla_vencimiento, activo, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (fila["id"], fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
-             _txt(fila["stock_actual"]), _txt(fila["stock_minimo"]),
-             _ib(fila["controla_stock"]), _ib(fila["controla_vencimiento"]),
-             _ib(fila["activo"]), _ts(fila["updated_at"])),
+             _txt_null(fila.get("margen_pct")), _txt(fila["stock_actual"]),
+             _txt(fila["stock_minimo"]), _ib(fila["controla_stock"]),
+             _ib(fila["controla_vencimiento"]), _ib(fila["activo"]),
+             _ts(fila["updated_at"])),
         )
