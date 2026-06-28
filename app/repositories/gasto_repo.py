@@ -1,10 +1,35 @@
-"""Acceso a datos de gastos.
-
-Por ahora solo expone lo necesario para la sincronización; el alta de gastos
-llegará con el módulo de Reportes/Gastos. La tabla ya existe en el esquema.
-"""
+"""Acceso a datos de gastos."""
 import sqlite3
+from decimal import Decimal
 
+from app.core.utils import ahora_iso
+from app.models.gasto import Gasto
+
+
+def crear(conn: sqlite3.Connection, gasto: Gasto) -> None:
+    conn.execute(
+        """INSERT INTO gastos
+           (id, fecha, tipo, descripcion, monto, proveedor_id, sincronizado, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 0, ?)""",
+        (gasto.id, gasto.fecha, gasto.tipo, gasto.descripcion,
+         str(gasto.monto), gasto.proveedor_id, ahora_iso()),
+    )
+
+
+def listar(conn: sqlite3.Connection, desde: str, hasta: str) -> list[sqlite3.Row]:
+    """Gastos en un rango de fechas (comparando solo la parte AAAA-MM-DD)."""
+    return conn.execute(
+        """SELECT g.id, g.fecha, g.tipo, g.descripcion, g.monto,
+                  p.nombre AS proveedor_nombre
+           FROM gastos g
+           LEFT JOIN proveedores p ON p.id = g.proveedor_id
+           WHERE substr(g.fecha, 1, 10) BETWEEN ? AND ?
+           ORDER BY g.fecha DESC""",
+        (desde, hasta),
+    ).fetchall()
+
+
+# --- Lectura para sincronización (local -> nube) ---------------------------
 
 def obtener_pendientes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
