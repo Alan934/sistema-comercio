@@ -10,6 +10,7 @@ from app.core.sync_manager import SyncManager
 from app.ui.views.ventas_view import VentasView
 from app.ui.views.stock_view import StockView
 from app.ui.views.proveedores_view import ProveedoresView
+from app.ui.views.reportes_view import ReportesView
 
 ctk.set_appearance_mode("light")       # 'light' | 'dark' | 'system'
 ctk.set_default_color_theme("blue")
@@ -41,6 +42,7 @@ class AppWindow(ctk.CTk):
             "caja": VentasView(contenido),
             "stock": StockView(contenido),
             "proveedores": ProveedoresView(contenido),
+            "reportes": ReportesView(contenido),
         }
         for vista in self._vistas.values():
             vista.grid(row=0, column=0, sticky="nsew")
@@ -48,7 +50,8 @@ class AppWindow(ctk.CTk):
         # --- Botones de navegación ---
         self._botones = {}
         for clave, texto in [("caja", "Caja"), ("stock", "Stock"),
-                             ("proveedores", "Proveedores")]:
+                             ("proveedores", "Proveedores"),
+                             ("reportes", "Reportes")]:
             btn = ctk.CTkButton(
                 side, text=texto, anchor="w", height=44,
                 fg_color="transparent", text_color=("gray10", "gray90"),
