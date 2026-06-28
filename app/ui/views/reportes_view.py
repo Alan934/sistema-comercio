@@ -7,6 +7,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from app.services import reporte_service, gasto_service
+from app.ui import theme
 from app.ui.dialogs.gasto_dialog import GastoDialog
 
 
@@ -16,27 +17,29 @@ def _money(v) -> str:
 
 class ReportesView(ctk.CTkFrame):
     def __init__(self, master):
-        super().__init__(master)
+        super().__init__(master, fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # --- Encabezado ---
         top = ctk.CTkFrame(self, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 6))
+        top.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 8))
         top.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(top, text="Reportes", font=("", 24, "bold")).grid(
-            row=0, column=0, sticky="w")
+        ctk.CTkLabel(top, text="Reportes", font=theme.fuente(24, "bold"),
+                     text_color=theme.TXT).grid(row=0, column=0, sticky="w")
         self.seg_periodo = ctk.CTkSegmentedButton(
             top, values=["Hoy", "Semana", "Mes", "Año"],
+            font=theme.fuente(13), selected_color=theme.PRIMARY,
+            selected_hover_color=theme.PRIMARY_HOVER,
             command=lambda _v: self._render())
         self.seg_periodo.set("Mes")
         self.seg_periodo.grid(row=0, column=1, padx=8)
-        ctk.CTkButton(top, text="Registrar gasto", width=150,
+        ctk.CTkButton(top, text="Registrar gasto", width=150, height=40,
+                      corner_radius=10, font=theme.fuente(14),
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._registrar_gasto).grid(row=0, column=2, padx=4)
 
-        # --- Contenido desplazable ---
-        self.scroll = ctk.CTkScrollableFrame(self)
-        self.scroll.grid(row=1, column=0, sticky="nsew", padx=16, pady=(6, 16))
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll.grid(row=1, column=0, sticky="nsew", padx=20, pady=(6, 18))
         self.scroll.grid_columnconfigure(0, weight=1)
 
     def al_mostrar(self) -> None:
@@ -53,7 +56,7 @@ class ReportesView(ctk.CTkFrame):
             return hoy - timedelta(days=6), hoy
         if sel == "Año":
             return hoy.replace(month=1, day=1), hoy
-        return hoy.replace(day=1), hoy  # Mes (por defecto)
+        return hoy.replace(day=1), hoy
 
     # --- Render -------------------------------------------------------------
 
@@ -63,7 +66,8 @@ class ReportesView(ctk.CTkFrame):
         desde, hasta = self._periodo()
 
         ctk.CTkLabel(self.scroll, text=f"Del {desde} al {hasta}",
-                     text_color="gray").pack(anchor="w", padx=4, pady=(2, 6))
+                     font=theme.fuente(13), text_color=theme.TXT_MUTED).pack(
+            anchor="w", padx=2, pady=(2, 8))
 
         r = reporte_service.resumen(desde, hasta)
         self._tarjetas(r)
@@ -94,43 +98,46 @@ class ReportesView(ctk.CTkFrame):
         cont = ctk.CTkFrame(self.scroll, fg_color="transparent")
         cont.pack(fill="x", padx=2, pady=4)
         for i in range(3):
-            cont.grid_columnconfigure(i, weight=1)
+            cont.grid_columnconfigure(i, weight=1, uniform="cards")
 
         neta = r["ganancia_neta"]
-        color_neta = "#1e8e3e" if neta >= 0 else "#c0392b"
+        color_neta = theme.VERDE if neta >= 0 else theme.ROJO
         tarjetas = [
-            ("Ventas", str(r["ventas_cantidad"]), None),
-            ("Total vendido", _money(r["total_vendido"]), None),
-            ("Costo total", _money(r["costo_total"]), None),
-            ("Ganancia bruta", _money(r["ganancia_bruta"]), None),
-            ("Gastos", _money(r["gastos_total"]), None),
-            ("GANANCIA NETA", _money(neta), color_neta),
+            ("Ventas", str(r["ventas_cantidad"]), theme.TXT),
+            ("Total vendido", _money(r["total_vendido"]), theme.TXT),
+            ("Costo total", _money(r["costo_total"]), theme.TXT),
+            ("Ganancia bruta", _money(r["ganancia_bruta"]), theme.TXT),
+            ("Gastos", _money(r["gastos_total"]), theme.TXT),
+            ("Ganancia neta", _money(neta), color_neta),
         ]
         for idx, (titulo, valor, color) in enumerate(tarjetas):
-            card = ctk.CTkFrame(cont)
+            card = ctk.CTkFrame(cont, fg_color=theme.CARD_BG, corner_radius=12)
             card.grid(row=idx // 3, column=idx % 3, padx=6, pady=6, sticky="ew")
-            ctk.CTkLabel(card, text=titulo, text_color="gray",
-                         anchor="w").pack(anchor="w", padx=12, pady=(10, 0))
-            lbl = ctk.CTkLabel(card, text=valor, font=("", 20, "bold"), anchor="w")
-            if color:
-                lbl.configure(text_color=color)
-            lbl.pack(anchor="w", padx=12, pady=(0, 10))
+            ctk.CTkLabel(card, text=titulo, font=theme.fuente(13),
+                         text_color=theme.TXT_MUTED, anchor="w").pack(
+                anchor="w", padx=14, pady=(12, 0))
+            ctk.CTkLabel(card, text=valor, font=theme.fuente(22, "bold"),
+                         text_color=color, anchor="w").pack(
+                anchor="w", padx=14, pady=(0, 12))
 
     def _seccion(self, titulo: str, filas: list[tuple[str, str]]) -> None:
-        cont = ctk.CTkFrame(self.scroll)
-        cont.pack(fill="x", padx=2, pady=6)
-        ctk.CTkLabel(cont, text=titulo, font=("", 15, "bold")).pack(
-            anchor="w", padx=12, pady=(8, 4))
+        card = ctk.CTkFrame(self.scroll, fg_color=theme.CARD_BG, corner_radius=12)
+        card.pack(fill="x", padx=2, pady=6)
+        ctk.CTkLabel(card, text=titulo, font=theme.fuente(15, "bold"),
+                     text_color=theme.TXT).pack(anchor="w", padx=16, pady=(12, 6))
         if not filas:
-            ctk.CTkLabel(cont, text="(sin datos en el período)",
-                         text_color="gray").pack(anchor="w", padx=12, pady=(0, 8))
+            ctk.CTkLabel(card, text="Sin datos en el período",
+                         font=theme.fuente(13), text_color=theme.TXT_MUTED).pack(
+                anchor="w", padx=16, pady=(0, 12))
             return
         for etiqueta, valor in filas:
-            f = ctk.CTkFrame(cont, fg_color="transparent")
-            f.pack(fill="x", padx=12, pady=1)
-            ctk.CTkLabel(f, text=etiqueta, anchor="w").pack(side="left")
-            ctk.CTkLabel(f, text=valor, anchor="e").pack(side="right")
-        ctk.CTkLabel(cont, text="").pack(pady=2)  # respiro inferior
+            f = ctk.CTkFrame(card, fg_color="transparent")
+            f.pack(fill="x", padx=16, pady=2)
+            ctk.CTkLabel(f, text=etiqueta, anchor="w", font=theme.fuente(14),
+                         text_color=theme.TXT).pack(side="left")
+            ctk.CTkLabel(f, text=valor, anchor="e", font=theme.fuente(14),
+                         text_color=theme.TXT).pack(side="right")
+        ctk.CTkFrame(card, fg_color="transparent", height=6).pack()
 
     # --- Acciones -----------------------------------------------------------
 

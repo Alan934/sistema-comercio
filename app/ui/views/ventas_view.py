@@ -1,11 +1,13 @@
-"""Pantalla principal del POS (caja).
+"""Pantalla principal del POS (caja), rediseñada.
 
-Flujo:
-  - La 'pistolita' escribe en el campo de escaneo; al recibir Enter se busca
-    el producto y se agrega al carrito automáticamente.
-  - Si el código no existe, se busca por nombre y se ofrece elegir.
+Layout: a la izquierda el escaneo + el carrito (tarjeta con filas + badges de
+cantidad); a la derecha el panel de cobro con el total destacado.
+
+Flujo (sin cambios):
+  - La 'pistolita' escribe en el campo de escaneo; al Enter busca y agrega.
+  - Si el código no existe, busca por nombre y ofrece elegir.
   - Productos pesables abren el modal de peso.
-  - El botón Cobrar (o F12) abre el modal de cobro y registra la venta.
+  - Cobrar (o F12) abre el modal de cobro y registra la venta.
 """
 from decimal import Decimal
 from tkinter import messagebox
@@ -14,71 +16,82 @@ import customtkinter as ctk
 
 from app.models.carrito import Carrito
 from app.services import venta_service, cliente_service
+from app.ui import theme
 from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
 from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
 
 
 def _money(d: Decimal) -> str:
-    return f"${d:,.2f}"
+    return f"${Decimal(str(d)):,.2f}"
 
 
 class VentasView(ctk.CTkFrame):
     def __init__(self, master):
-        super().__init__(master)
+        super().__init__(master, fg_color="transparent")
         self.carrito = Carrito()
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_columnconfigure(1, weight=0, minsize=250)
+        self.grid_rowconfigure(1, weight=1)
 
-        # --- Barra de escaneo ---
-        top = ctk.CTkFrame(self)
-        top.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
-        top.grid_columnconfigure(0, weight=1)
+        # --- Encabezado ---
+        ctk.CTkLabel(self, text="Caja", font=theme.fuente(24, "bold"),
+                     text_color=theme.TXT).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(18, 10))
+
+        # --- Columna izquierda: escaneo + carrito ---
+        main = ctk.CTkFrame(self, fg_color="transparent")
+        main.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=(0, 18))
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_rowconfigure(1, weight=1)
+
         self.entry_scan = ctk.CTkEntry(
-            top, placeholder_text="Escaneá un código o escribí para buscar...",
-            font=("", 18), height=44)
-        self.entry_scan.grid(row=0, column=0, sticky="ew", padx=(0, 8), pady=8)
+            main, placeholder_text="Escaneá un código o buscá un producto…",
+            font=theme.fuente(16), height=48, corner_radius=10)
+        self.entry_scan.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         self.entry_scan.bind("<Return>", self._on_scan)
-        ctk.CTkButton(top, text="Agregar", width=110, height=44,
-                      command=self._on_scan).grid(row=0, column=1, pady=8)
 
-        # --- Encabezado de la tabla ---
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=1, column=0, sticky="ew", padx=12)
-        for col, (txt, w) in enumerate(
-                [("Producto", 320), ("Cant.", 90), ("Precio", 120),
-                 ("Subtotal", 120), ("", 50)]):
-            header.grid_columnconfigure(col, weight=1 if col == 0 else 0)
-            ctk.CTkLabel(header, text=txt, width=w, anchor="w",
-                         font=("", 13, "bold")).grid(row=0, column=col, padx=4)
-
-        # --- Lista de ítems ---
-        self.tabla = ctk.CTkScrollableFrame(self)
-        self.tabla.grid(row=2, column=0, sticky="nsew", padx=12, pady=6)
+        self.tabla = ctk.CTkScrollableFrame(main, fg_color=theme.CARD_BG,
+                                            corner_radius=12)
+        self.tabla.grid(row=1, column=0, sticky="nsew")
         self.tabla.grid_columnconfigure(0, weight=1)
 
-        # --- Pie: total + acciones ---
-        pie = ctk.CTkFrame(self)
-        pie.grid(row=3, column=0, sticky="ew", padx=12, pady=(6, 12))
-        pie.grid_columnconfigure(0, weight=1)
+        # --- Columna derecha: panel de cobro ---
+        panel = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=12)
+        panel.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=(0, 18))
+        panel.grid_columnconfigure(0, weight=1)
+        panel.grid_rowconfigure(3, weight=1)
 
-        self.lbl_total = ctk.CTkLabel(pie, text="TOTAL: $0.00",
-                                      font=("", 28, "bold"))
-        self.lbl_total.grid(row=0, column=0, sticky="w", padx=12, pady=12)
+        ctk.CTkLabel(panel, text="Total a cobrar", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(18, 0))
+        self.lbl_total = ctk.CTkLabel(panel, text="$0,00",
+                                      font=theme.fuente(32, "bold"),
+                                      text_color=theme.ACCENT)
+        self.lbl_total.grid(row=1, column=0, sticky="w", padx=18, pady=(0, 2))
+        self.lbl_count = ctk.CTkLabel(panel, text="0 productos",
+                                      font=theme.fuente(13),
+                                      text_color=theme.TXT_MUTED)
+        self.lbl_count.grid(row=2, column=0, sticky="w", padx=18)
 
-        ctk.CTkButton(pie, text="Cancelar venta", width=140, height=48,
-                      fg_color="gray", command=self._cancelar_venta).grid(
-            row=0, column=1, padx=6, pady=12)
-        ctk.CTkButton(pie, text="COBRAR (F12)", width=200, height=48,
-                      font=("", 18, "bold"), command=self._cobrar).grid(
-            row=0, column=2, padx=6, pady=12)
+        botonera = ctk.CTkFrame(panel, fg_color="transparent")
+        botonera.grid(row=4, column=0, sticky="ew", padx=16, pady=16)
+        botonera.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(botonera, text="Cobrar", height=50, corner_radius=10,
+                      font=theme.fuente(18, "bold"), fg_color=theme.PRIMARY,
+                      hover_color=theme.PRIMARY_HOVER,
+                      command=self._cobrar).grid(row=0, column=0, sticky="ew")
+        ctk.CTkButton(botonera, text="Cancelar venta", height=38,
+                      corner_radius=10, font=theme.fuente(13),
+                      fg_color="transparent", text_color=theme.TXT_MUTED,
+                      hover_color=theme.GHOST,
+                      command=self._cancelar_venta).grid(
+            row=1, column=0, sticky="ew", pady=(8, 0))
 
-        # Atajos
         self.winfo_toplevel().bind("<F12>", lambda _e: self._cobrar())
-
         self._refrescar()
-        self.after(100, self.entry_scan.focus_set)
+        self.after(120, self.entry_scan.focus_set)
 
     # --- Escaneo / agregado -------------------------------------------------
 
@@ -119,26 +132,51 @@ class VentasView(ctk.CTkFrame):
         for w in self.tabla.winfo_children():
             w.destroy()
 
-        for i, item in enumerate(self.carrito.items):
-            fila = ctk.CTkFrame(self.tabla, fg_color="transparent")
-            fila.grid(row=i, column=0, sticky="ew", pady=2)
-            fila.grid_columnconfigure(0, weight=1)
+        if self.carrito.esta_vacio():
+            ctk.CTkLabel(self.tabla, text="El carrito está vacío.\nEscaneá un "
+                         "producto para empezar.", font=theme.fuente(14),
+                         text_color=theme.TXT_MUTED, justify="center").pack(
+                pady=40)
+        else:
+            for i, item in enumerate(self.carrito.items):
+                self._fila_item(i, item)
 
-            cant = (f"{item.cantidad} kg" if item.es_pesable
-                    else f"{int(item.cantidad)}")
-            ctk.CTkLabel(fila, text=item.descripcion, anchor="w",
-                         width=320).grid(row=0, column=0, padx=4, sticky="w")
-            ctk.CTkLabel(fila, text=cant, width=90).grid(row=0, column=1, padx=4)
-            ctk.CTkLabel(fila, text=_money(item.precio_unitario),
-                         width=120).grid(row=0, column=2, padx=4)
-            ctk.CTkLabel(fila, text=_money(item.subtotal),
-                         width=120).grid(row=0, column=3, padx=4)
-            ctk.CTkButton(fila, text="✕", width=40, fg_color="#b33",
-                          hover_color="#922",
-                          command=lambda idx=i: self._quitar(idx)).grid(
-                row=0, column=4, padx=4)
+        total = self.carrito.total
+        n = len(self.carrito.items)
+        self.lbl_total.configure(text=_money(total))
+        self.lbl_count.configure(text=f"{n} producto{'s' if n != 1 else ''}")
 
-        self.lbl_total.configure(text=f"TOTAL: {_money(self.carrito.total)}")
+    def _fila_item(self, indice: int, item) -> None:
+        fila = ctk.CTkFrame(self.tabla, fg_color="transparent")
+        fila.pack(fill="x", padx=8, pady=4)
+
+        if item.es_pesable:
+            badge_txt, bg, fg = f"{item.cantidad}\nkg", theme.BADGE_KG_BG, theme.BADGE_KG_TXT
+            unidad = f"{_money(item.precio_unitario)} / kg"
+        else:
+            badge_txt, bg, fg = f"{int(item.cantidad)}", theme.BADGE_BG, theme.BADGE_TXT
+            unidad = f"{_money(item.precio_unitario)} c/u"
+
+        ctk.CTkLabel(fila, text=badge_txt, width=38, height=38, corner_radius=8,
+                     fg_color=bg, text_color=fg,
+                     font=theme.fuente(13, "bold")).pack(side="left")
+
+        medio = ctk.CTkFrame(fila, fg_color="transparent")
+        medio.pack(side="left", fill="x", expand=True, padx=12)
+        ctk.CTkLabel(medio, text=item.descripcion, anchor="w",
+                     font=theme.fuente(15), text_color=theme.TXT).pack(
+            anchor="w")
+        ctk.CTkLabel(medio, text=unidad, anchor="w", font=theme.fuente(12),
+                     text_color=theme.TXT_MUTED).pack(anchor="w")
+
+        ctk.CTkButton(fila, text="✕", width=30, height=30, corner_radius=8,
+                      fg_color="transparent", text_color=theme.TXT_MUTED,
+                      hover_color=theme.ROJO,
+                      command=lambda idx=indice: self._quitar(idx)).pack(
+            side="right")
+        ctk.CTkLabel(fila, text=_money(item.subtotal), width=90,
+                     anchor="e", font=theme.fuente(15, "bold"),
+                     text_color=theme.TXT).pack(side="right", padx=(0, 6))
 
     def _quitar(self, indice: int) -> None:
         self.carrito.quitar(indice)

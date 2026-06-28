@@ -6,6 +6,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from app.services import stock_service, compra_service
+from app.ui import theme
 from app.ui.dialogs.producto_dialog import ProductoDialog
 from app.ui.dialogs.remito_dialog import RemitoDialog
 
@@ -16,52 +17,64 @@ def _money(v) -> str:
 
 class StockView(ctk.CTkFrame):
     def __init__(self, master):
-        super().__init__(master)
+        super().__init__(master, fg_color="transparent")
         self._productos = []
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
 
-        # --- Encabezado ---
+        # --- Encabezado: título + búsqueda + acciones ---
         top = ctk.CTkFrame(self, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 6))
+        top.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 8))
         top.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(top, text="Stock", font=("", 24, "bold")).grid(
-            row=0, column=0, sticky="w")
+        ctk.CTkLabel(top, text="Stock", font=theme.fuente(24, "bold"),
+                     text_color=theme.TXT).grid(row=0, column=0, sticky="w")
         self.ent_buscar = ctk.CTkEntry(
-            top, placeholder_text="Buscar por nombre...", width=260)
+            top, placeholder_text="Buscar por nombre…", width=240, height=38,
+            corner_radius=10, font=theme.fuente(14))
         self.ent_buscar.grid(row=0, column=1, sticky="e", padx=8)
         self.ent_buscar.bind("<KeyRelease>", lambda _e: self._render_tabla())
-        ctk.CTkButton(top, text="Nuevo producto", width=140,
+        ctk.CTkButton(top, text="Nuevo producto", width=140, height=38,
+                      corner_radius=10, font=theme.fuente(14),
+                      fg_color="transparent", text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST,
+                      hover_color=theme.GHOST,
                       command=self._nuevo_producto).grid(row=0, column=2, padx=4)
-        ctk.CTkButton(top, text="Recibir remito", width=140,
-                      command=self._recibir_remito).grid(row=0, column=3, padx=4)
+        ctk.CTkButton(top, text="Recibir remito", width=140, height=38,
+                      corner_radius=10, font=theme.fuente(14),
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+                      command=self._recibir_remito).grid(row=0, column=3)
 
         # --- Banner de alertas ---
-        self.lbl_alertas = ctk.CTkLabel(self, text="", anchor="w",
-                                        text_color="orange")
-        self.lbl_alertas.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 4))
-        self.btn_alertas = ctk.CTkButton(self, text="Ver alertas", width=110,
-                                         fg_color="gray",
-                                         command=self._ver_alertas)
-        self.btn_alertas.grid(row=2, column=0, sticky="w", padx=16, pady=(0, 6))
+        self.banner = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=10)
+        self.banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(2, 8))
+        self.banner.grid_columnconfigure(0, weight=1)
+        self.lbl_alertas = ctk.CTkLabel(self.banner, text="", anchor="w",
+                                        font=theme.fuente(13))
+        self.lbl_alertas.grid(row=0, column=0, sticky="w", padx=14, pady=8)
+        ctk.CTkButton(self.banner, text="Ver alertas", width=110, height=30,
+                      corner_radius=8, font=theme.fuente(13),
+                      fg_color="transparent", text_color=theme.ACCENT,
+                      hover_color=theme.GHOST,
+                      command=self._ver_alertas).grid(row=0, column=1, padx=8)
 
         # --- Encabezado de tabla ---
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=3, column=0, sticky="new", padx=16)
+        header.grid(row=2, column=0, sticky="ew", padx=28)
+        header.grid_columnconfigure(0, weight=1)
         for col, (txt, w) in enumerate(
-                [("Producto", 280), ("Código", 140), ("Precio", 110),
-                 ("Costo", 110), ("Stock", 90), ("Mín.", 70), ("", 80)]):
+                [("Producto", 250), ("Código", 130), ("Precio", 100),
+                 ("Costo", 100), ("Stock", 80), ("", 80)]):
             ctk.CTkLabel(header, text=txt, width=w, anchor="w",
-                         font=("", 13, "bold")).grid(row=0, column=col, padx=4)
+                         font=theme.fuente(12, "bold"),
+                         text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
 
         # --- Tabla ---
-        self.tabla = ctk.CTkScrollableFrame(self)
-        self.tabla.grid(row=4, column=0, sticky="nsew", padx=16, pady=(36, 16))
-        self.grid_rowconfigure(4, weight=1)
+        self.tabla = ctk.CTkScrollableFrame(self, fg_color=theme.CARD_BG,
+                                            corner_radius=12)
+        self.tabla.grid(row=3, column=0, sticky="nsew", padx=20, pady=(6, 18))
         self.tabla.grid_columnconfigure(0, weight=1)
 
-    # Llamado por el shell cada vez que se muestra la vista.
     def al_mostrar(self) -> None:
         self._recargar()
 
@@ -80,35 +93,50 @@ class StockView(ctk.CTkFrame):
             partes.append(f"{len(bajos)} con stock bajo")
         if vencs:
             partes.append(f"{len(vencs)} por vencer")
-        self.lbl_alertas.configure(
-            text=("⚠ " + " · ".join(partes)) if partes else "✓ Sin alertas")
+        if partes:
+            self.lbl_alertas.configure(text="  ⚠  " + " · ".join(partes),
+                                       text_color=theme.ROJO)
+        else:
+            self.lbl_alertas.configure(text="  ✓  Sin alertas",
+                                       text_color=theme.VERDE)
 
     def _render_tabla(self) -> None:
         filtro = self.ent_buscar.get().strip().lower()
         for w in self.tabla.winfo_children():
             w.destroy()
-        fila = 0
-        for p in self._productos:
-            if filtro and filtro not in p.nombre.lower():
-                continue
+        visibles = [p for p in self._productos
+                    if not filtro or filtro in p.nombre.lower()]
+        if not visibles:
+            txt = ("No hay productos.\nCargá el primero o recibí un remito."
+                   if not filtro else "Ningún producto coincide con la búsqueda.")
+            ctk.CTkLabel(self.tabla, text=txt, font=theme.fuente(14),
+                         text_color=theme.TXT_MUTED, justify="center").pack(pady=36)
+            return
+        for p in visibles:
             f = ctk.CTkFrame(self.tabla, fg_color="transparent")
-            f.grid(row=fila, column=0, sticky="ew", pady=1)
+            f.pack(fill="x", padx=8, pady=2)
             f.grid_columnconfigure(0, weight=1)
-            stock_txt = (f"{p.stock_actual} kg" if p.es_pesable
-                         else f"{p.stock_actual}")
-            ctk.CTkLabel(f, text=p.nombre, width=280, anchor="w").grid(
+            stock_txt = f"{p.stock_actual} kg" if p.es_pesable else f"{p.stock_actual}"
+            ctk.CTkLabel(f, text=p.nombre, width=250, anchor="w",
+                         font=theme.fuente(15), text_color=theme.TXT).grid(
                 row=0, column=0, padx=4, sticky="w")
-            ctk.CTkLabel(f, text=(p.codigo_barra or "—"), width=140,
-                         anchor="w").grid(row=0, column=1, padx=4)
-            ctk.CTkLabel(f, text=_money(p.precio_venta), width=110).grid(
+            ctk.CTkLabel(f, text=(p.codigo_barra or "—"), width=130, anchor="w",
+                         font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
+                row=0, column=1, padx=4)
+            ctk.CTkLabel(f, text=_money(p.precio_venta), width=100, anchor="w",
+                         font=theme.fuente(14), text_color=theme.TXT).grid(
                 row=0, column=2, padx=4)
-            ctk.CTkLabel(f, text=_money(p.costo_compra), width=110).grid(
+            ctk.CTkLabel(f, text=_money(p.costo_compra), width=100, anchor="w",
+                         font=theme.fuente(14), text_color=theme.TXT_MUTED).grid(
                 row=0, column=3, padx=4)
-            ctk.CTkLabel(f, text=stock_txt, width=90).grid(row=0, column=4, padx=4)
-            ctk.CTkButton(f, text="Editar", width=80,
+            ctk.CTkLabel(f, text=stock_txt, width=80, anchor="w",
+                         font=theme.fuente(14), text_color=theme.TXT).grid(
+                row=0, column=4, padx=4)
+            ctk.CTkButton(f, text="Editar", width=70, height=30, corner_radius=8,
+                          font=theme.fuente(13), fg_color="transparent",
+                          text_color=theme.ACCENT, hover_color=theme.GHOST,
                           command=lambda pid=p.id: self._editar_producto(pid)).grid(
-                row=0, column=6, padx=4)
-            fila += 1
+                row=0, column=5, padx=4)
 
     # --- Acciones -----------------------------------------------------------
 
@@ -148,8 +176,7 @@ class StockView(ctk.CTkFrame):
         except compra_service.CompraError as e:
             messagebox.showerror("No se pudo registrar el remito", str(e))
             return
-        messagebox.showinfo("Remito registrado",
-                            "Stock y costos actualizados.")
+        messagebox.showinfo("Remito registrado", "Stock y costos actualizados.")
         self._recargar()
 
     def _ver_alertas(self) -> None:
