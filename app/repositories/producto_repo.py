@@ -34,6 +34,13 @@ def buscar_por_codigo(conn: sqlite3.Connection, codigo: str) -> Producto | None:
     return _to_producto(row) if row else None
 
 
+def obtener(conn: sqlite3.Connection, producto_id: str) -> sqlite3.Row | None:
+    """Trae el producto completo (todas las columnas) para edición."""
+    return conn.execute(
+        "SELECT * FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()
+
+
 def listar_todos(conn: sqlite3.Connection) -> list[Producto]:
     rows = conn.execute(
         f"SELECT {_COLS} FROM productos WHERE activo = 1 ORDER BY nombre"

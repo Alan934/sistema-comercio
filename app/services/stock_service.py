@@ -69,6 +69,15 @@ def listar_productos() -> list[Producto]:
         conn.close()
 
 
+def obtener_producto(producto_id: str) -> dict | None:
+    conn = db_local.connect()
+    try:
+        row = producto_repo.obtener(conn, producto_id)
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def alertas_stock_bajo() -> list[dict]:
     conn = db_local.connect()
     try:
