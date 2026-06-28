@@ -15,6 +15,15 @@ def _money(v) -> str:
     return f"${Decimal(str(v)):,.2f}"
 
 
+def _texto_saldo(saldo):
+    """Positivo = nos debe; negativo = tiene saldo a favor."""
+    if saldo > 0:
+        return f"Te debe {_money(saldo)}", theme.ROJO
+    if saldo < 0:
+        return f"{_money(abs(saldo))} a favor", theme.VERDE
+    return "Al día", theme.TXT_MUTED
+
+
 class ClientesView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
@@ -68,16 +77,16 @@ class ClientesView(ctk.CTkFrame):
             ctk.CTkLabel(f, text=(c.telefono or "—"), width=160, anchor="w",
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
                 row=0, column=1, padx=4)
-            color = theme.ROJO if c.saldo_cuenta > 0 else theme.TXT_MUTED
-            ctk.CTkLabel(f, text=_money(c.saldo_cuenta), width=140, anchor="w",
+            txt, color = _texto_saldo(c.saldo_cuenta)
+            ctk.CTkLabel(f, text=txt, width=140, anchor="w",
                          font=theme.fuente(15, "bold"), text_color=color).grid(
                 row=0, column=2, padx=4)
             ctk.CTkButton(f, text="Registrar pago", width=140, height=32,
                           corner_radius=8, font=theme.fuente(13),
                           fg_color="transparent", text_color=theme.ACCENT,
                           hover_color=theme.GHOST,
-                          command=lambda cid=c.id, n=c.nombre:
-                          self._pagar(cid, n)).grid(row=0, column=3, padx=4)
+                          command=lambda cid=c.id, n=c.nombre, s=c.saldo_cuenta:
+                          self._pagar(cid, n, s)).grid(row=0, column=3, padx=4)
 
     def _nuevo(self) -> None:
         datos = ClienteDialog(self).mostrar()
@@ -91,11 +100,21 @@ class ClientesView(ctk.CTkFrame):
             return
         self._recargar()
 
-    def _pagar(self, cliente_id: str, nombre: str) -> None:
+    def _pagar(self, cliente_id: str, nombre: str, saldo) -> None:
         monto = MontoDialog(self, "Registrar pago",
                             f"Pago de {nombre}:").mostrar()
         if monto is None:
             return
+        if monto > saldo:
+            if saldo > 0:
+                msg = (f"{nombre} te debe {_money(saldo)} y vas a registrar un "
+                       f"pago de {_money(monto)}.\nLe quedarán "
+                       f"{_money(monto - saldo)} a favor. ¿Continuar?")
+            else:
+                msg = (f"{nombre} no tiene deuda. El pago de {_money(monto)} le "
+                       "quedará a favor. ¿Continuar?")
+            if not messagebox.askyesno("Pago mayor a la deuda", msg):
+                return
         try:
             cliente_service.registrar_pago(cliente_id, monto)
         except cliente_service.ClienteError as e:
