@@ -41,3 +41,17 @@ def listar_activos(conn: sqlite3.Connection) -> list[Proveedor]:
         "FROM proveedores WHERE activo = 1 ORDER BY nombre"
     ).fetchall()
     return [_to_proveedor(r) for r in rows]
+
+
+# --- Lectura para sincronización del catálogo (local -> nube) --------------
+
+def obtener_pendientes_sync(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM proveedores WHERE sincronizado = 0"
+    ).fetchall()
+
+
+def marcar_sincronizado(conn: sqlite3.Connection, proveedor_id: str) -> None:
+    conn.execute(
+        "UPDATE proveedores SET sincronizado = 1 WHERE id = ?", (proveedor_id,)
+    )

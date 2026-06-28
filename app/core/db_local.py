@@ -23,6 +23,22 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _migrar(conn: sqlite3.Connection) -> None:
+    """Migraciones livianas para bases ya creadas: agrega columnas nuevas si
+    faltan (ALTER TABLE ADD COLUMN es idempotente vía chequeo previo)."""
+    nuevas_columnas = {
+        "clientes": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "proveedores": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+    }
+    for tabla, columnas in nuevas_columnas.items():
+        existentes = {row["name"]
+                      for row in conn.execute(f"PRAGMA table_info({tabla})")}
+        for nombre, definicion in columnas:
+            if nombre not in existentes:
+                conn.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}")
+
+
 def init_db() -> None:
     """Crea la base y todas las tablas si no existen. Idempotente."""
     settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -30,6 +46,7 @@ def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(schema_sql)
+        _migrar(conn)
         conn.commit()
     finally:
         conn.close()

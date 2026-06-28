@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
     telefono      TEXT,
     saldo_cuenta  NUMERIC(12,2) NOT NULL DEFAULT 0,   -- lo que LE DEBEMOS
     activo        INTEGER NOT NULL DEFAULT 1,
+    sincronizado  INTEGER NOT NULL DEFAULT 0,
     updated_at    TEXT NOT NULL
 );
 
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS clientes (
     limite_credito  NUMERIC(12,2) NOT NULL DEFAULT 0,
     saldo_cuenta    NUMERIC(12,2) NOT NULL DEFAULT 0,  -- lo que NOS DEBE
     activo          INTEGER NOT NULL DEFAULT 1,
+    sincronizado    INTEGER NOT NULL DEFAULT 0,
     updated_at      TEXT NOT NULL
 );
 

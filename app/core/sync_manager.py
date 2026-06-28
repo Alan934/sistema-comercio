@@ -18,7 +18,8 @@ from decimal import Decimal
 
 from app.core import db_local, db_cloud, network
 from app.repositories import (producto_repo, venta_repo, compra_repo,
-                             cuenta_repo, gasto_repo)
+                             cuenta_repo, gasto_repo, cliente_repo,
+                             proveedor_repo)
 from config import settings
 
 try:
@@ -77,6 +78,50 @@ def _pull_catalogo(local, cloud) -> int:
 
 
 # --- PUSH: local -> nube ----------------------------------------------------
+
+def _push_catalogo(local, cloud) -> int:
+    """Sube clientes y proveedores (con su saldo) usando upsert, así la nube
+    refleja nombres y deudas actualizadas. Se vuelven a subir cuando cambian."""
+    clientes = cliente_repo.obtener_pendientes_sync(local)
+    proveedores = proveedor_repo.obtener_pendientes_sync(local)
+    if not clientes and not proveedores:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for c in clientes:
+                cur.execute(
+                    """INSERT INTO clientes
+                         (id, nombre, telefono, limite_credito, saldo_cuenta,
+                          activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         nombre = EXCLUDED.nombre, telefono = EXCLUDED.telefono,
+                         limite_credito = EXCLUDED.limite_credito,
+                         saldo_cuenta = EXCLUDED.saldo_cuenta,
+                         activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
+                    (c["id"], c["nombre"], c["telefono"], _num(c["limite_credito"]),
+                     _num(c["saldo_cuenta"]), bool(c["activo"]), _dt(c["updated_at"])),
+                )
+            for p in proveedores:
+                cur.execute(
+                    """INSERT INTO proveedores
+                         (id, nombre, cuit, telefono, saldo_cuenta, activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         nombre = EXCLUDED.nombre, cuit = EXCLUDED.cuit,
+                         telefono = EXCLUDED.telefono,
+                         saldo_cuenta = EXCLUDED.saldo_cuenta,
+                         activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
+                    (p["id"], p["nombre"], p["cuit"], p["telefono"],
+                     _num(p["saldo_cuenta"]), bool(p["activo"]), _dt(p["updated_at"])),
+                )
+    for c in clientes:
+        cliente_repo.marcar_sincronizado(local, c["id"])
+    for p in proveedores:
+        proveedor_repo.marcar_sincronizado(local, p["id"])
+    local.commit()
+    return len(clientes) + len(proveedores)
+
 
 def _push_ventas(local, cloud) -> int:
     """Sube las ventas pendientes. Devuelve cuántas subieron."""
@@ -230,12 +275,14 @@ def sincronizar_ahora() -> dict:
     try:
         db_cloud.asegurar_schema(cloud)
         productos = _pull_catalogo(local, cloud)
+        catalogo = _push_catalogo(local, cloud)
         ventas = _push_ventas(local, cloud)
         compras = _push_compras(local, cloud)
         movimientos = _push_cuenta(local, cloud)
         gastos = _push_gastos(local, cloud)
         return {"ok": True,
                 "productos_actualizados": productos,
+                "catalogo_subido": catalogo,
                 "ventas_subidas": ventas,
                 "compras_subidas": compras,
                 "movimientos_subidos": movimientos,

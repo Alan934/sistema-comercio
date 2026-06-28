@@ -36,8 +36,11 @@ def registrar_movimiento(
     nuevo_saldo = saldo_actual + monto if tipo == DEBE else saldo_actual - monto
     ahora = ahora_iso()
 
+    # sincronizado=0: al cambiar el saldo, hay que volver a subir la entidad
+    # para que la nube refleje la deuda actualizada.
     conn.execute(
-        f"UPDATE {tabla} SET saldo_cuenta = ?, updated_at = ? WHERE id = ?",
+        f"UPDATE {tabla} SET saldo_cuenta = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (str(nuevo_saldo), ahora, entidad_id),
     )
     conn.execute(

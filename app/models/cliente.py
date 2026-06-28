@@ -9,3 +9,4 @@ class Cliente:
     nombre: str
     saldo_cuenta: Decimal      # lo que NOS DEBE
     limite_credito: Decimal
+    telefono: str | None = None
