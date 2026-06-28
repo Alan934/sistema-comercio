@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Credenciales
+.env
+
+# Base de datos local (se genera en runtime)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Build de PyInstaller
+build/
+dist/
+*.spec

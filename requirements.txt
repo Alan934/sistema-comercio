@@ -1,0 +1,8 @@
+# GUI
+customtkinter>=5.2.2
+
+# Conexión a Neon PostgreSQL (binary = no requiere compilar nada en la PC del local)
+psycopg[binary]>=3.2
+
+# Lectura de credenciales desde .env
+python-dotenv>=1.0
