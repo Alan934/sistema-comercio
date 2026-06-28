@@ -1,55 +1,58 @@
-"""Punto de entrada. Por ahora hace una PRUEBA DE HUMO del core:
-crea la base local, verifica las tablas y hace un insert/select de prueba.
+"""Punto de entrada de la aplicación. Ejecutar desde la raíz:  python main.py
 
-Más adelante, este archivo levantará la GUI de CustomTkinter.
-Ejecutar desde la raíz del proyecto:  python main.py
+Requisitos: pip install -r requirements.txt  (CustomTkinter).
+La primera vez crea la base local y, si está vacía, siembra unos productos
+y un cliente de ejemplo para poder probar la caja enseguida.
 """
-from decimal import Decimal
-
-from app.core import db_local, network
-from app.core.utils import nuevo_id, ahora_iso
-from config import settings
+from app.core import db_local
+from app.core.utils import ahora_iso
 
 
-def prueba_de_humo() -> None:
-    print(f"== {settings.APP_NOMBRE} v{settings.APP_VERSION} - prueba de humo del core ==\n")
-
-    # 1) Crear/abrir la base local
-    db_local.init_db()
-    print(f"[OK] Base local lista en: {settings.LOCAL_DB_PATH}")
-
-    # 2) Verificar tablas creadas
-    tablas = db_local.listar_tablas()
-    print(f"[OK] {len(tablas)} tablas: {', '.join(tablas)}")
-
-    # 3) Insert/select de prueba (idempotente por codigo_barra UNIQUE)
+def _sembrar_si_vacio() -> None:
+    """Carga datos de ejemplo solo si todavía no hay productos."""
     conn = db_local.connect()
     try:
-        conn.execute(
-            """INSERT OR IGNORE INTO productos
-               (id, codigo_barra, nombre, precio_venta, costo_compra, stock_actual, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (nuevo_id(), "7790000000017", "Producto de prueba",
-             str(Decimal("1500.00")), str(Decimal("900.00")),
-             str(Decimal("10")), ahora_iso()),
-        )
-        conn.commit()
-        fila = conn.execute(
-            "SELECT nombre, precio_venta, stock_actual FROM productos "
-            "WHERE codigo_barra = ?",
-            ("7790000000017",),
-        ).fetchone()
-        print(f"[OK] Producto leido: {fila['nombre']} "
-              f"${fila['precio_venta']} (stock {fila['stock_actual']})")
+        n = conn.execute("SELECT COUNT(*) AS n FROM productos").fetchone()["n"]
+        if n > 0:
+            return
+        ahora = ahora_iso()
+        with conn:
+            conn.executemany(
+                """INSERT INTO productos
+                   (id, codigo_barra, nombre, es_pesable, unidad_medida,
+                    precio_venta, costo_compra, stock_actual, stock_minimo,
+                    controla_stock, controla_vencimiento, activo, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                [
+                    ("seed-coca", "7790895000270", "Coca-Cola 500ml", 0, "UN",
+                     "1200.00", "800.00", "24", "6", 1, 0, 1, ahora),
+                    ("seed-agua", "7790895000287", "Agua mineral 500ml", 0, "UN",
+                     "800.00", "500.00", "30", "6", 1, 0, 1, ahora),
+                    ("seed-alfajor", "7790040000019", "Alfajor triple", 0, "UN",
+                     "950.00", "600.00", "40", "10", 1, 0, 1, ahora),
+                    ("seed-queso", "2000001000005", "Queso cremoso", 1, "KG",
+                     "8500.00", "6000.00", "5.000", "1.000", 1, 1, 1, ahora),
+                    ("seed-jamon", "2000002000002", "Jamón cocido", 1, "KG",
+                     "12000.00", "8500.00", "3.000", "0.500", 1, 1, 1, ahora),
+                ],
+            )
+            conn.execute(
+                """INSERT INTO clientes
+                   (id, nombre, telefono, limite_credito, saldo_cuenta, activo, updated_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                ("seed-juan", "Juan Pérez", "2611234567", "20000.00", "0.00", 1, ahora),
+            )
     finally:
         conn.close()
 
-    # 4) Estado de conectividad (no es error si no hay internet)
-    online = network.hay_internet()
-    print(f"[OK] Conectividad a internet: {'SI' if online else 'NO (modo offline)'}")
 
-    print("\n== Core funcionando correctamente ==")
+def main() -> None:
+    db_local.init_db()
+    _sembrar_si_vacio()
+    # Import diferido: solo se necesita CustomTkinter al levantar la GUI.
+    from app.ui.app_window import AppWindow
+    AppWindow().mainloop()
 
 
 if __name__ == "__main__":
-    prueba_de_humo()
+    main()
