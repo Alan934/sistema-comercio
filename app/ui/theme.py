@@ -45,6 +45,9 @@ BADGE_KG_TXT = ("#854F0B", "#EF9F27")
 PAD = 16
 GAP = 8
 
+# --- Paleta para gráficos (tonos medios, legibles en claro y oscuro) --------
+CHART_PALETTE = ["#1D9E75", "#378ADD", "#EF9F27", "#7F77DD", "#D85A30", "#639922"]
+
 
 def fuente(tam: int = 14, peso: str = "normal") -> ctk.CTkFont:
     """Crea una CTkFont. Llamar siempre después de que exista la ventana raíz."""

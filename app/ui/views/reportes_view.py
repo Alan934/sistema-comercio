@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from app.services import reporte_service, gasto_service
 from app.ui import theme
+from app.ui.charts import BarChart, DonutChart
 from app.ui.dialogs.gasto_dialog import GastoDialog
 
 
@@ -72,12 +73,24 @@ class ReportesView(ctk.CTkFrame):
         r = reporte_service.resumen(desde, hasta)
         self._tarjetas(r)
 
-        self._seccion("Gastos por tipo", [
-            (g["tipo"], _money(g["total"]))
-            for g in reporte_service.gastos_por_tipo(desde, hasta)])
-        self._seccion("Ventas por método de pago", [
-            (m["metodo"], _money(m["total"]))
+        # Gráfico de tendencia de ventas (barras).
+        serie = reporte_service.ventas_serie(desde, hasta)
+        card = self._card(serie["titulo"])
+        grafico = BarChart(card, alto=190)
+        grafico.pack(fill="x", padx=14, pady=(0, 12))
+        grafico.set_data(serie["puntos"], theme.ACCENT)
+
+        # Dos donas lado a lado: métodos de pago y gastos por tipo.
+        fila = ctk.CTkFrame(self.scroll, fg_color="transparent")
+        fila.pack(fill="x", padx=2, pady=6)
+        fila.grid_columnconfigure((0, 1), weight=1, uniform="donas")
+        self._dona(fila, 0, "Ventas por método de pago", [
+            (m["metodo"], m["total"])
             for m in reporte_service.ventas_por_metodo(desde, hasta)])
+        self._dona(fila, 1, "Gastos por tipo", [
+            (g["tipo"], g["total"])
+            for g in reporte_service.gastos_por_tipo(desde, hasta)])
+
         self._seccion("Productos más vendidos", [
             (f"{t['producto']}  ({t['cantidad']})", _money(t["total"]))
             for t in reporte_service.top_productos(desde, hasta, 10)])
@@ -119,6 +132,24 @@ class ReportesView(ctk.CTkFrame):
             ctk.CTkLabel(card, text=valor, font=theme.fuente(22, "bold"),
                          text_color=color, anchor="w").pack(
                 anchor="w", padx=14, pady=(0, 12))
+
+    def _card(self, titulo: str) -> ctk.CTkFrame:
+        """Crea una tarjeta con título y la devuelve para meterle un gráfico."""
+        card = ctk.CTkFrame(self.scroll, fg_color=theme.CARD_BG, corner_radius=12)
+        card.pack(fill="x", padx=2, pady=6)
+        ctk.CTkLabel(card, text=titulo, font=theme.fuente(15, "bold"),
+                     text_color=theme.TXT).pack(anchor="w", padx=16, pady=(12, 6))
+        return card
+
+    def _dona(self, parent, columna: int, titulo: str, items) -> None:
+        card = ctk.CTkFrame(parent, fg_color=theme.CARD_BG, corner_radius=12)
+        card.grid(row=0, column=columna, sticky="nsew",
+                  padx=(0, 6) if columna == 0 else (6, 0))
+        ctk.CTkLabel(card, text=titulo, font=theme.fuente(15, "bold"),
+                     text_color=theme.TXT).pack(anchor="w", padx=16, pady=(12, 4))
+        dona = DonutChart(card, alto=180)
+        dona.pack(fill="x", padx=14, pady=(0, 12))
+        dona.set_data(items)
 
     def _seccion(self, titulo: str, filas: list[tuple[str, str]]) -> None:
         card = ctk.CTkFrame(self.scroll, fg_color=theme.CARD_BG, corner_radius=12)

@@ -84,3 +84,23 @@ def gastos_por_proveedor(conn: sqlite3.Connection, desde: str, hasta: str) -> li
            GROUP BY p.id, p.nombre ORDER BY total DESC""",
         (desde, hasta),
     ).fetchall()
+
+
+def ventas_por_dia(conn: sqlite3.Connection, desde: str, hasta: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT substr(fecha, 1, 10) AS dia, COALESCE(SUM(total), 0) AS total
+           FROM ventas
+           WHERE estado = 'COMPLETADA' AND substr(fecha, 1, 10) BETWEEN ? AND ?
+           GROUP BY dia ORDER BY dia""",
+        (desde, hasta),
+    ).fetchall()
+
+
+def ventas_por_mes(conn: sqlite3.Connection, desde: str, hasta: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT substr(fecha, 1, 7) AS mes, COALESCE(SUM(total), 0) AS total
+           FROM ventas
+           WHERE estado = 'COMPLETADA' AND substr(fecha, 1, 10) BETWEEN ? AND ?
+           GROUP BY mes ORDER BY mes""",
+        (desde, hasta),
+    ).fetchall()

@@ -101,6 +101,7 @@ class AppWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
 
     def mostrar(self, clave: str) -> None:
+        self._activa = clave
         vista = self._vistas[clave]
         if hasattr(vista, "al_mostrar"):
             vista.al_mostrar()
@@ -118,6 +119,11 @@ class AppWindow(ctk.CTk):
         theme.guardar_apariencia(nuevo)
         self.btn_tema.configure(text="Modo claro" if nuevo == "dark"
                                 else "Modo oscuro")
+        # Redibuja la vista activa (los gráficos en Canvas necesitan repintarse
+        # con los colores del nuevo modo).
+        vista = self._vistas.get(self._activa)
+        if vista is not None and hasattr(vista, "al_mostrar"):
+            vista.al_mostrar()
 
     def _buscar_actualizacion(self) -> None:
         self.btn_update.configure(text="Buscando...")
