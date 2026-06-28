@@ -34,6 +34,79 @@ def buscar_por_codigo(conn: sqlite3.Connection, codigo: str) -> Producto | None:
     return _to_producto(row) if row else None
 
 
+def listar_todos(conn: sqlite3.Connection) -> list[Producto]:
+    rows = conn.execute(
+        f"SELECT {_COLS} FROM productos WHERE activo = 1 ORDER BY nombre"
+    ).fetchall()
+    return [_to_producto(r) for r in rows]
+
+
+def listar_stock_bajo(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Productos cuyo stock llegó al mínimo. La columna es NUMERIC, así que
+    la comparación stock_actual <= stock_minimo es numérica (no de texto)."""
+    return conn.execute(
+        "SELECT id, nombre, stock_actual, stock_minimo, unidad_medida "
+        "FROM productos "
+        "WHERE activo = 1 AND controla_stock = 1 "
+        "  AND stock_actual <= stock_minimo "
+        "ORDER BY nombre"
+    ).fetchall()
+
+
+def crear(conn: sqlite3.Connection, datos: dict) -> None:
+    """Inserta un producto. `datos` debe traer todas las claves (lo arma
+    stock_service con los valores por defecto ya completos)."""
+    conn.execute(
+        """INSERT INTO productos
+             (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
+              costo_compra, precio_venta, stock_actual, stock_minimo,
+              controla_stock, controla_vencimiento, activo, updated_at)
+           VALUES
+             (:id, :codigo_barra, :nombre, :categoria_id, :es_pesable, :unidad_medida,
+              :costo_compra, :precio_venta, :stock_actual, :stock_minimo,
+              :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
+        datos,
+    )
+
+
+def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
+    """Edita catálogo y precios. No toca stock_actual (eso va por compras/ventas)."""
+    conn.execute(
+        """UPDATE productos SET
+             codigo_barra = :codigo_barra, nombre = :nombre,
+             categoria_id = :categoria_id, es_pesable = :es_pesable,
+             unidad_medida = :unidad_medida, costo_compra = :costo_compra,
+             precio_venta = :precio_venta, stock_minimo = :stock_minimo,
+             controla_stock = :controla_stock,
+             controla_vencimiento = :controla_vencimiento,
+             activo = :activo, updated_at = :updated_at
+           WHERE id = :id""",
+        datos,
+    )
+
+
+def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad) -> None:
+    """Suma stock (al recibir un remito). Lee/reescribe en Decimal."""
+    row = conn.execute(
+        "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Producto inexistente: {producto_id}")
+    nuevo = Decimal(str(row["stock_actual"])) + cantidad
+    conn.execute(
+        "UPDATE productos SET stock_actual = ?, updated_at = ? WHERE id = ?",
+        (str(nuevo), ahora_iso(), producto_id),
+    )
+
+
+def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
+    """Actualiza el costo de compra con el del último remito recibido."""
+    conn.execute(
+        "UPDATE productos SET costo_compra = ?, updated_at = ? WHERE id = ?",
+        (str(costo), ahora_iso(), producto_id),
+    )
+
+
 def buscar_por_nombre(conn: sqlite3.Connection, texto: str,
                       limite: int = 20) -> list[Producto]:
     """Búsqueda parcial por nombre (para el buscador manual del POS)."""
