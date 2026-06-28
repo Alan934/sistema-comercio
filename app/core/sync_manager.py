@@ -17,7 +17,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.core import db_local, db_cloud, network
-from app.repositories import producto_repo, venta_repo
+from app.repositories import (producto_repo, venta_repo, compra_repo,
+                             cuenta_repo, gasto_repo)
 from config import settings
 
 try:
@@ -125,6 +126,89 @@ def _push_ventas(local, cloud) -> int:
     return subidas
 
 
+def _push_compras(local, cloud) -> int:
+    """Sube los remitos pendientes (cabecera + detalle)."""
+    pendientes = compra_repo.obtener_pendientes(local)
+    subidas = 0
+    for c in pendientes:
+        detalle = compra_repo.obtener_detalle(local, c["id"])
+        with cloud.transaction():
+            with cloud.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO compras
+                         (id, proveedor_id, fecha, nro_remito, total, condicion,
+                          created_at, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO NOTHING""",
+                    (c["id"], c["proveedor_id"], _dt(c["fecha"]), c["nro_remito"],
+                     _num(c["total"]), c["condicion"],
+                     _dt(c["created_at"]), _dt(c["updated_at"])),
+                )
+                for d in detalle:
+                    cur.execute(
+                        """INSERT INTO compras_detalle
+                             (id, compra_id, producto_id, cantidad,
+                              costo_unitario, subtotal)
+                           VALUES (%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (id) DO NOTHING""",
+                        (d["id"], d["compra_id"], d["producto_id"],
+                         _num(d["cantidad"]), _num(d["costo_unitario"]),
+                         _num(d["subtotal"])),
+                    )
+        compra_repo.marcar_sincronizada(local, c["id"])
+        local.commit()
+        subidas += 1
+    return subidas
+
+
+def _push_cuenta(local, cloud) -> int:
+    """Sube los movimientos de cuenta corriente (fiados y deudas/pagos)."""
+    pendientes = cuenta_repo.obtener_pendientes(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for m in pendientes:
+                cur.execute(
+                    """INSERT INTO cuenta_movimientos
+                         (id, entidad_tipo, entidad_id, fecha, tipo, monto,
+                          saldo_resultante, referencia_tipo, referencia_id,
+                          nota, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO NOTHING""",
+                    (m["id"], m["entidad_tipo"], m["entidad_id"], _dt(m["fecha"]),
+                     m["tipo"], _num(m["monto"]), _num(m["saldo_resultante"]),
+                     m["referencia_tipo"], m["referencia_id"], m["nota"],
+                     _dt(m["created_at"])),
+                )
+    for m in pendientes:
+        cuenta_repo.marcar_sincronizado(local, m["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_gastos(local, cloud) -> int:
+    """Sube los gastos pendientes."""
+    pendientes = gasto_repo.obtener_pendientes(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for g in pendientes:
+                cur.execute(
+                    """INSERT INTO gastos
+                         (id, fecha, tipo, descripcion, monto, proveedor_id, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO NOTHING""",
+                    (g["id"], _dt(g["fecha"]), g["tipo"], g["descripcion"],
+                     _num(g["monto"]), g["proveedor_id"], _dt(g["created_at"])),
+                )
+    for g in pendientes:
+        gasto_repo.marcar_sincronizado(local, g["id"])
+    local.commit()
+    return len(pendientes)
+
+
 # --- Ciclo completo ---------------------------------------------------------
 
 def sincronizar_ahora() -> dict:
@@ -147,8 +231,15 @@ def sincronizar_ahora() -> dict:
         db_cloud.asegurar_schema(cloud)
         productos = _pull_catalogo(local, cloud)
         ventas = _push_ventas(local, cloud)
-        return {"ok": True, "productos_actualizados": productos,
-                "ventas_subidas": ventas}
+        compras = _push_compras(local, cloud)
+        movimientos = _push_cuenta(local, cloud)
+        gastos = _push_gastos(local, cloud)
+        return {"ok": True,
+                "productos_actualizados": productos,
+                "ventas_subidas": ventas,
+                "compras_subidas": compras,
+                "movimientos_subidos": movimientos,
+                "gastos_subidos": gastos}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"error durante la sync: {e}"}
     finally:

@@ -55,6 +55,26 @@ CREATE TABLE IF NOT EXISTS proveedores (
     updated_at    TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS compras (
+    id            TEXT PRIMARY KEY,
+    proveedor_id  TEXT,
+    fecha         TIMESTAMPTZ NOT NULL,
+    nro_remito    TEXT,
+    total         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    condicion     TEXT NOT NULL DEFAULT 'CONTADO',
+    created_at    TIMESTAMPTZ NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS compras_detalle (
+    id             TEXT PRIMARY KEY,
+    compra_id      TEXT NOT NULL REFERENCES compras(id),
+    producto_id    TEXT NOT NULL,
+    cantidad       NUMERIC(12,3) NOT NULL,
+    costo_unitario NUMERIC(12,2) NOT NULL,
+    subtotal       NUMERIC(12,2) NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ventas (
     id            TEXT PRIMARY KEY,
     fecha         TIMESTAMPTZ NOT NULL,
@@ -112,3 +132,5 @@ CREATE TABLE IF NOT EXISTS gastos (
 
 CREATE INDEX IF NOT EXISTS idx_cloud_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_venta    ON ventas_detalle(venta_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_det_compra   ON compras_detalle(compra_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_cm_entidad   ON cuenta_movimientos(entidad_tipo, entidad_id);

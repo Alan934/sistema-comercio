@@ -48,3 +48,18 @@ def registrar_movimiento(
         (nuevo_id(), entidad_tipo, entidad_id, ahora, tipo, str(monto),
          str(nuevo_saldo), referencia_tipo, referencia_id, nota, ahora),
     )
+
+
+# --- Lectura para sincronización (local -> nube) ---------------------------
+
+def obtener_pendientes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM cuenta_movimientos WHERE sincronizado = 0 ORDER BY created_at"
+    ).fetchall()
+
+
+def marcar_sincronizado(conn: sqlite3.Connection, movimiento_id: str) -> None:
+    conn.execute(
+        "UPDATE cuenta_movimientos SET sincronizado = 1 WHERE id = ?",
+        (movimiento_id,),
+    )

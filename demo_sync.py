@@ -7,7 +7,18 @@ Requisitos para que haga algo:
 Si falta algo, lo informa y no hace nada destructivo.
 """
 from app.core import db_local, db_cloud, sync_manager
-from app.repositories import venta_repo
+
+TABLAS_SYNC = ("ventas", "compras", "cuenta_movimientos", "gastos")
+
+
+def _pendientes() -> dict:
+    conn = db_local.connect()
+    try:
+        return {t: conn.execute(
+            f"SELECT COUNT(*) AS n FROM {t} WHERE sincronizado = 0"
+        ).fetchone()["n"] for t in TABLAS_SYNC}
+    finally:
+        conn.close()
 
 
 def main():
@@ -19,23 +30,11 @@ def main():
         print("  - Completá NEON_DATABASE_URL en el archivo .env")
         return
 
-    conn = db_local.connect()
-    try:
-        pendientes_antes = venta_repo.contar_pendientes_sync(conn)
-    finally:
-        conn.close()
-    print(f"Ventas pendientes ANTES: {pendientes_antes}")
-
+    print("Pendientes ANTES: ", _pendientes())
     print("Sincronizando con Neon...")
     resultado = sync_manager.sincronizar_ahora()
     print("Resultado:", resultado)
-
-    conn = db_local.connect()
-    try:
-        pendientes_despues = venta_repo.contar_pendientes_sync(conn)
-    finally:
-        conn.close()
-    print(f"Ventas pendientes DESPUÉS: {pendientes_despues}")
+    print("Pendientes DESPUES:", _pendientes())
 
 
 if __name__ == "__main__":

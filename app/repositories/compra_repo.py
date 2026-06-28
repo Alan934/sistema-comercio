@@ -25,3 +25,23 @@ def guardar(conn: sqlite3.Connection, compra: Compra,
             (nuevo_id(), compra.id, it.producto_id, str(it.cantidad),
              str(it.costo_unitario), str(it.subtotal)),
         )
+
+
+# --- Lectura para sincronización (local -> nube) ---------------------------
+
+def obtener_pendientes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM compras WHERE sincronizado = 0 ORDER BY created_at"
+    ).fetchall()
+
+
+def obtener_detalle(conn: sqlite3.Connection, compra_id: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM compras_detalle WHERE compra_id = ?", (compra_id,)
+    ).fetchall()
+
+
+def marcar_sincronizada(conn: sqlite3.Connection, compra_id: str) -> None:
+    conn.execute(
+        "UPDATE compras SET sincronizado = 1 WHERE id = ?", (compra_id,)
+    )
