@@ -9,7 +9,7 @@ Convención de saldos:
 import sqlite3
 from decimal import Decimal
 
-from app.core.utils import ahora_iso, nuevo_id
+from app.core.utils import ahora_iso, ahora_local, nuevo_id
 
 DEBE = "DEBE"
 HABER = "HABER"
@@ -48,7 +48,7 @@ def registrar_movimiento(
            (id, entidad_tipo, entidad_id, fecha, tipo, monto, saldo_resultante,
             referencia_tipo, referencia_id, nota, sincronizado, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
-        (nuevo_id(), entidad_tipo, entidad_id, ahora, tipo, str(monto),
+        (nuevo_id(), entidad_tipo, entidad_id, ahora_local(), tipo, str(monto),
          str(nuevo_saldo), referencia_tipo, referencia_id, nota, ahora),
     )
 

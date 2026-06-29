@@ -11,6 +11,8 @@ import customtkinter as ctk
 class ModalBase(ctk.CTkToplevel):
     def __init__(self, master, titulo: str):
         super().__init__(master)
+        # Se oculta hasta estar centrada (evita el parpadeo arriba a la izquierda).
+        self.withdraw()
         self.resultado = None
         self.title(titulo)
         self.resizable(False, False)
@@ -30,9 +32,19 @@ class ModalBase(ctk.CTkToplevel):
         self.grab_release()
         self.destroy()
 
-    def mostrar(self):
-        # Centra sobre la ventana padre y toma el foco modal.
+    def _centrar(self) -> None:
+        """Posiciona la ventana en el centro de la pantalla según su tamaño."""
         self.update_idletasks()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = max(0, (self.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.winfo_screenheight() - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def mostrar(self):
+        # Centra en pantalla, se muestra y toma el foco modal.
+        self._centrar()
+        self.deiconify()
         self.grab_set()
         self.wait_window()
         return self.resultado

@@ -26,8 +26,8 @@ class AppWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title(f"{settings.APP_NOMBRE} v{settings.APP_VERSION}")
-        self.geometry("1180x740")
-        self.minsize(1040, 660)
+        self.minsize(900, 600)
+        self._centrar_ventana(1180, 740)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -99,6 +99,12 @@ class AppWindow(ctk.CTk):
         self.sync = SyncManager()
         self.sync.start()
         self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
+
+    def _centrar_ventana(self, w: int, h: int) -> None:
+        """Abre la ventana principal centrada en la pantalla."""
+        x = max(0, (self.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.winfo_screenheight() - h) // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
     def mostrar(self, clave: str) -> None:
         self._activa = clave

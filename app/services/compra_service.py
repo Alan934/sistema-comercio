@@ -11,7 +11,7 @@ Todo dentro de una sola transacción: o entra completo, o no entra nada.
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import ahora_iso, nuevo_id
+from app.core.utils import ahora_iso, ahora_local, nuevo_id
 from app.models.compra import Compra, ItemCompra, CONTADO, CUENTA_CORRIENTE
 from app.repositories import compra_repo, producto_repo, lote_repo, cuenta_repo
 
@@ -33,7 +33,7 @@ def registrar_compra(proveedor_id: str, items: list[ItemCompra],
     total = sum((it.subtotal for it in items), Decimal("0.00"))
     ahora = ahora_iso()
     compra = Compra(
-        id=nuevo_id(), proveedor_id=proveedor_id, fecha=ahora,
+        id=nuevo_id(), proveedor_id=proveedor_id, fecha=ahora_local(),
         nro_remito=nro_remito, total=total, condicion=condicion,
         created_at=ahora, updated_at=ahora)
 

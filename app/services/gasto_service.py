@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import ahora_iso, nuevo_id
+from app.core.utils import ahora_local, nuevo_id
 from app.models.gasto import Gasto, TIPOS, FIJO, VARIABLE
 from app.repositories import gasto_repo
 
@@ -23,7 +23,7 @@ def crear_gasto(tipo: str, descripcion: str, monto: Decimal,
         raise GastoError("El monto debe ser mayor a cero.")
 
     gasto = Gasto(
-        id=nuevo_id(), fecha=fecha or ahora_iso(), tipo=tipo,
+        id=nuevo_id(), fecha=fecha or ahora_local(), tipo=tipo,
         descripcion=descripcion, monto=monto, proveedor_id=proveedor_id)
     conn = db_local.connect()
     try:

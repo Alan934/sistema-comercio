@@ -43,9 +43,8 @@ class ClientesView(ctk.CTkFrame):
 
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=1, column=0, sticky="ew", padx=28)
-        header.grid_columnconfigure(0, weight=1)
         for col, (txt, w) in enumerate(
-                [("Cliente", 280), ("Teléfono", 160), ("Nos debe", 140), ("", 150)]):
+                [("Cliente", 240), ("Teléfono", 150), ("Nos debe", 190), ("", 200)]):
             ctk.CTkLabel(header, text=txt, width=w, anchor="w",
                          font=theme.fuente(12, "bold"),
                          text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
@@ -71,15 +70,14 @@ class ClientesView(ctk.CTkFrame):
         for i, c in enumerate(clientes):
             f = ctk.CTkFrame(self.tabla, fg_color="transparent")
             f.pack(fill="x", padx=8, pady=3)
-            f.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(f, text=c.nombre, width=280, anchor="w",
+            ctk.CTkLabel(f, text=c.nombre, width=240, anchor="w",
                          font=theme.fuente(15), text_color=theme.TXT).grid(
-                row=0, column=0, padx=4, sticky="w")
-            ctk.CTkLabel(f, text=(c.telefono or "—"), width=160, anchor="w",
+                row=0, column=0, padx=4)
+            ctk.CTkLabel(f, text=(c.telefono or "—"), width=150, anchor="w",
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
                 row=0, column=1, padx=4)
             txt, color = _texto_saldo(c.saldo_cuenta)
-            ctk.CTkLabel(f, text=txt, width=140, anchor="w",
+            ctk.CTkLabel(f, text=txt, width=190, anchor="w",
                          font=theme.fuente(15, "bold"), text_color=color).grid(
                 row=0, column=2, padx=4)
             acciones = ctk.CTkFrame(f, fg_color="transparent")

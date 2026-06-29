@@ -4,7 +4,7 @@ La UI llamará a estas funciones y nunca verá SQL.
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import ahora_iso, nuevo_id
+from app.core.utils import ahora_iso, ahora_local, nuevo_id
 from app.models.carrito import Carrito
 from app.models.producto import Producto
 from app.models.venta import Venta, Pago, FIADO, METODOS_PAGO
@@ -63,7 +63,7 @@ def registrar_venta(carrito: Carrito, pagos: list[Pago],
     ahora = ahora_iso()
     venta = Venta(
         id=nuevo_id(),
-        fecha=ahora,
+        fecha=ahora_local(),
         cliente_id=cliente_id,
         subtotal=carrito.subtotal,
         descuento=Decimal("0.00"),
