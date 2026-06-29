@@ -101,9 +101,14 @@ class AppWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
 
     def _centrar_ventana(self, w: int, h: int) -> None:
-        """Abre la ventana principal centrada en la pantalla."""
-        x = max(0, (self.winfo_screenwidth() - w) // 2)
-        y = max(0, (self.winfo_screenheight() - h) // 2)
+        """Abre la ventana centrada. Si la pantalla es más chica que la ventana,
+        la achica para que entre (deja margen para la barra de tareas)."""
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w = min(w, sw)
+        h = min(h, sh - 50)
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     def mostrar(self, clave: str) -> None:

@@ -49,18 +49,65 @@ def ventas_por_metodo(conn: sqlite3.Connection, desde: str, hasta: str) -> list[
     ).fetchall()
 
 
+def unidades_vendidas(conn: sqlite3.Connection, desde: str, hasta: str):
+    row = conn.execute(
+        """SELECT COALESCE(SUM(vd.cantidad), 0) AS u
+           FROM ventas_detalle vd JOIN ventas v ON v.id = vd.venta_id
+           WHERE v.estado = 'COMPLETADA'
+             AND substr(v.fecha, 1, 10) BETWEEN ? AND ?""",
+        (desde, hasta),
+    ).fetchone()
+    return row["u"]
+
+
 def top_productos(conn: sqlite3.Connection, desde: str, hasta: str,
                   limite: int = 10) -> list[sqlite3.Row]:
     return conn.execute(
         """SELECT vd.descripcion,
                   COALESCE(SUM(vd.cantidad), 0) AS cantidad,
-                  COALESCE(SUM(vd.subtotal), 0) AS total
+                  COALESCE(SUM(vd.subtotal), 0) AS total,
+                  COALESCE(SUM(vd.subtotal - vd.costo_unitario * vd.cantidad), 0)
+                      AS ganancia
            FROM ventas_detalle vd
            JOIN ventas v ON v.id = vd.venta_id
            WHERE v.estado = 'COMPLETADA'
              AND substr(v.fecha, 1, 10) BETWEEN ? AND ?
            GROUP BY vd.descripcion ORDER BY total DESC LIMIT ?""",
         (desde, hasta, limite),
+    ).fetchall()
+
+
+def por_categoria(conn: sqlite3.Connection, desde: str, hasta: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT COALESCE(c.nombre, 'Sin categoría') AS categoria,
+                  COALESCE(SUM(vd.subtotal), 0) AS ventas,
+                  COALESCE(SUM(vd.subtotal - vd.costo_unitario * vd.cantidad), 0)
+                      AS ganancia
+           FROM ventas_detalle vd
+           JOIN ventas v ON v.id = vd.venta_id
+           LEFT JOIN productos p ON p.id = vd.producto_id
+           LEFT JOIN categorias c ON c.id = p.categoria_id
+           WHERE v.estado = 'COMPLETADA'
+             AND substr(v.fecha, 1, 10) BETWEEN ? AND ?
+           GROUP BY categoria ORDER BY ventas DESC""",
+        (desde, hasta),
+    ).fetchall()
+
+
+def ranking_proveedores(conn: sqlite3.Connection, desde: str, hasta: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT p.nombre,
+                  COALESCE(SUM(c.total), 0) AS comprado,
+                  COUNT(c.id) AS remitos,
+                  p.saldo_cuenta AS deuda
+           FROM proveedores p
+           LEFT JOIN compras c ON c.proveedor_id = p.id
+                AND substr(c.fecha, 1, 10) BETWEEN ? AND ?
+           WHERE p.activo = 1
+           GROUP BY p.id, p.nombre, p.saldo_cuenta
+           HAVING COALESCE(SUM(c.total), 0) > 0 OR p.saldo_cuenta <> 0
+           ORDER BY comprado DESC""",
+        (desde, hasta),
     ).fetchall()
 
 

@@ -41,6 +41,7 @@ class AjusteSaldoDialog(ModalBase):
         ctk.CTkButton(cont, text="Guardar", width=130, fg_color=theme.PRIMARY,
                       hover_color=theme.PRIMARY_HOVER,
                       command=self._confirmar).pack(side="left", padx=8)
+        self._pie_atajos(bind_enter=False)
         self.after(60, self.ent.focus_set)
 
     def _confirmar(self) -> None:

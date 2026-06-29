@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
     nombre        TEXT NOT NULL,
     cuit          TEXT,
     telefono      TEXT,
+    email         TEXT,
     saldo_cuenta  NUMERIC(12,2) NOT NULL DEFAULT 0,   -- lo que LE DEBEMOS
     activo        INTEGER NOT NULL DEFAULT 1,
     sincronizado  INTEGER NOT NULL DEFAULT 0,

@@ -46,6 +46,7 @@ class CategoriaForm(ModalBase):
         ctk.CTkButton(cont, text="Guardar", width=140, fg_color=theme.PRIMARY,
                       hover_color=theme.PRIMARY_HOVER,
                       command=self._confirmar).pack(side="left", padx=8)
+        self._pie_atajos(grid_row=99)
         self.after(50, self.ent_nombre.focus_set)
 
     def _confirmar(self) -> None:

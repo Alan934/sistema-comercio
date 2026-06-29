@@ -12,13 +12,13 @@ class ProveedorError(Exception):
 
 
 def crear(nombre: str, cuit: str | None = None,
-          telefono: str | None = None) -> str:
+          telefono: str | None = None, email: str | None = None) -> str:
     nombre = (nombre or "").strip()
     if not nombre:
         raise ProveedorError("El proveedor necesita un nombre.")
     proveedor = Proveedor(
         id=nuevo_id(), nombre=nombre, cuit=cuit, telefono=telefono,
-        saldo_cuenta=Decimal("0.00"), activo=True)
+        saldo_cuenta=Decimal("0.00"), activo=True, email=email)
     conn = db_local.connect()
     try:
         with conn:

@@ -43,7 +43,7 @@ class ProveedoresView(ctk.CTkFrame):
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=1, column=0, sticky="ew", padx=28)
         for col, (txt, w) in enumerate(
-                [("Proveedor", 240), ("Teléfono", 150), ("Deuda", 190), ("", 200)]):
+                [("Proveedor", 230), ("Contacto", 210), ("Deuda", 180), ("", 190)]):
             ctk.CTkLabel(header, text=txt, width=w, anchor="w",
                          font=theme.fuente(12, "bold"),
                          text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
@@ -69,14 +69,14 @@ class ProveedoresView(ctk.CTkFrame):
         for i, p in enumerate(proveedores):
             f = ctk.CTkFrame(self.tabla, fg_color="transparent")
             f.pack(fill="x", padx=8, pady=3)
-            ctk.CTkLabel(f, text=p.nombre, width=240, anchor="w",
+            ctk.CTkLabel(f, text=p.nombre, width=230, anchor="w",
                          font=theme.fuente(15), text_color=theme.TXT).grid(
                 row=0, column=0, padx=4)
-            ctk.CTkLabel(f, text=(p.telefono or "—"), width=150, anchor="w",
-                         font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
-                row=0, column=1, padx=4)
+            ctk.CTkLabel(f, text=(p.telefono or p.email or "—"), width=210,
+                         anchor="w", font=theme.fuente(13),
+                         text_color=theme.TXT_MUTED).grid(row=0, column=1, padx=4)
             txt, color = _texto_saldo(p.saldo_cuenta)
-            ctk.CTkLabel(f, text=txt, width=190, anchor="w",
+            ctk.CTkLabel(f, text=txt, width=180, anchor="w",
                          font=theme.fuente(15, "bold"), text_color=color).grid(
                 row=0, column=2, padx=4)
             acciones = ctk.CTkFrame(f, fg_color="transparent")
@@ -100,7 +100,7 @@ class ProveedoresView(ctk.CTkFrame):
             return
         try:
             proveedor_service.crear(datos["nombre"], datos["cuit"],
-                                    datos["telefono"])
+                                    datos["telefono"], datos["email"])
         except proveedor_service.ProveedorError as e:
             messagebox.showerror("No se pudo crear", str(e))
             return

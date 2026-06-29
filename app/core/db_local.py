@@ -28,7 +28,8 @@ def _migrar(conn: sqlite3.Connection) -> None:
     faltan (ALTER TABLE ADD COLUMN es idempotente vía chequeo previo)."""
     nuevas_columnas = {
         "clientes": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
-        "proveedores": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "proveedores": [("sincronizado", "INTEGER NOT NULL DEFAULT 0"),
+                        ("email", "TEXT")],
         "categorias": [("margen_pct", "NUMERIC(6,2)")],
         "productos": [("margen_pct", "NUMERIC(6,2)")],
     }

@@ -36,6 +36,7 @@ class ClienteDialog(ModalBase):
                       command=self._cancelar).pack(side="left", padx=8)
         ctk.CTkButton(cont, text="Guardar", width=140,
                       command=self._confirmar).pack(side="left", padx=8)
+        self._pie_atajos(grid_row=99)
         self.after(50, self._entries["nombre"].focus_set)
 
     def _confirmar(self) -> None:

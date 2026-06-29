@@ -32,6 +32,25 @@ class ModalBase(ctk.CTkToplevel):
         self.grab_release()
         self.destroy()
 
+    def _activar_enter(self) -> None:
+        """Permite confirmar el formulario con Enter (Esc ya cancela)."""
+        if hasattr(self, "_confirmar"):
+            self.bind("<Return>", lambda _e: self._confirmar())
+            self.bind("<KP_Enter>", lambda _e: self._confirmar())
+
+    def _pie_atajos(self, grid_row: int | None = None, bind_enter: bool = True):
+        """Agrega la nota 'Enter para confirmar · Esc para cancelar' y, si
+        bind_enter, activa el Enter. grid_row para layouts con grid; None usa pack."""
+        if bind_enter:
+            self._activar_enter()
+        lbl = ctk.CTkLabel(self, text="Enter para confirmar  ·  Esc para cancelar",
+                           text_color=("gray45", "gray60"))
+        if grid_row is not None:
+            lbl.grid(row=grid_row, column=0, columnspan=2, pady=(0, 12))
+        else:
+            lbl.pack(pady=(0, 12))
+        return lbl
+
     def _centrar(self) -> None:
         """Posiciona la ventana en el centro de la pantalla según su tamaño."""
         self.update_idletasks()

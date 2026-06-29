@@ -11,3 +11,4 @@ class Proveedor:
     telefono: str | None
     saldo_cuenta: Decimal      # lo que le debemos (>0 = deuda nuestra)
     activo: bool
+    email: str | None = None

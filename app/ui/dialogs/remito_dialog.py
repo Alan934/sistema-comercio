@@ -91,6 +91,7 @@ class ItemRemitoDialog(ModalBase):
                       hover_color=theme.PRIMARY_HOVER,
                       command=self._confirmar).pack(side="left", padx=8)
 
+        self._pie_atajos(grid_row=99)
         self.after(50, self.ent_cant.focus_set)
         self._recalcular()
 

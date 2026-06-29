@@ -7,13 +7,14 @@ from app.ui.dialogs.base import ModalBase
 
 
 class ProveedorDialog(ModalBase):
-    """Alta de proveedor. Devuelve dict {nombre, cuit, telefono} o None."""
+    """Alta de proveedor. Devuelve dict {nombre, cuit, telefono, email} o None."""
 
     def __init__(self, master):
         super().__init__(master, "Nuevo proveedor")
         self._entries = {}
         for fila, (etiqueta, clave) in enumerate(
-                [("Nombre", "nombre"), ("CUIT", "cuit"), ("Teléfono", "telefono")]):
+                [("Nombre", "nombre"), ("CUIT", "cuit"),
+                 ("Teléfono", "telefono"), ("Correo", "email")]):
             ctk.CTkLabel(self, text=etiqueta, anchor="w").grid(
                 row=fila, column=0, sticky="w", padx=(20, 8), pady=6)
             ent = ctk.CTkEntry(self, width=240)
@@ -21,14 +22,15 @@ class ProveedorDialog(ModalBase):
             self._entries[clave] = ent
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
-        self.lbl_error.grid(row=3, column=0, columnspan=2, padx=20)
+        self.lbl_error.grid(row=4, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
-        cont.grid(row=4, column=0, columnspan=2, pady=(8, 20))
+        cont.grid(row=5, column=0, columnspan=2, pady=(8, 20))
         ctk.CTkButton(cont, text="Cancelar", width=120, fg_color="gray",
                       command=self._cancelar).pack(side="left", padx=8)
         ctk.CTkButton(cont, text="Guardar", width=140,
                       command=self._confirmar).pack(side="left", padx=8)
+        self._pie_atajos(grid_row=99)
         self.after(50, self._entries["nombre"].focus_set)
 
     def _confirmar(self) -> None:
@@ -40,6 +42,7 @@ class ProveedorDialog(ModalBase):
             "nombre": nombre,
             "cuit": self._entries["cuit"].get().strip() or None,
             "telefono": self._entries["telefono"].get().strip() or None,
+            "email": self._entries["email"].get().strip() or None,
         })
 
 
@@ -61,6 +64,7 @@ class MontoDialog(ModalBase):
                       command=self._cancelar).pack(side="left", padx=8)
         ctk.CTkButton(cont, text="Aceptar", width=130,
                       command=self._confirmar).pack(side="left", padx=8)
+        self._pie_atajos(bind_enter=False)
         self.after(50, self.ent.focus_set)
 
     def _confirmar(self) -> None:

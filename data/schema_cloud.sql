@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
     nombre        TEXT NOT NULL,
     cuit          TEXT,
     telefono      TEXT,
+    email         TEXT,
     saldo_cuenta  NUMERIC(12,2) NOT NULL DEFAULT 0,
     activo        BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at    TIMESTAMPTZ NOT NULL

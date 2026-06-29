@@ -16,6 +16,19 @@ def _money(v) -> str:
     return f"${Decimal(str(v)):,.2f}"
 
 
+def _deuda(v) -> str:
+    d = Decimal(str(v))
+    if d > 0:
+        return f"le debés {_money(d)}"
+    if d < 0:
+        return f"{_money(abs(d))} a favor"
+    return "al día"
+
+
+def _unidades(v) -> str:
+    return f"{float(v):g}"
+
+
 class ReportesView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
@@ -80,7 +93,7 @@ class ReportesView(ctk.CTkFrame):
         grafico.pack(fill="x", padx=14, pady=(0, 12))
         grafico.set_data(serie["puntos"], theme.ACCENT)
 
-        # Dos donas lado a lado: métodos de pago y gastos por tipo.
+        # Donas: método de pago + gastos por tipo.
         fila = ctk.CTkFrame(self.scroll, fg_color="transparent")
         fila.pack(fill="x", padx=2, pady=6)
         fila.grid_columnconfigure((0, 1), weight=1, uniform="donas")
@@ -91,15 +104,30 @@ class ReportesView(ctk.CTkFrame):
             (g["tipo"], g["total"])
             for g in reporte_service.gastos_por_tipo(desde, hasta)])
 
+        # Donas: ventas y ganancia por categoría.
+        cats = reporte_service.por_categoria(desde, hasta)
+        fila2 = ctk.CTkFrame(self.scroll, fg_color="transparent")
+        fila2.pack(fill="x", padx=2, pady=6)
+        fila2.grid_columnconfigure((0, 1), weight=1, uniform="donas")
+        self._dona(fila2, 0, "Ventas por categoría",
+                   [(c["categoria"], c["ventas"]) for c in cats])
+        self._dona(fila2, 1, "Ganancia por categoría",
+                   [(c["categoria"], c["ganancia"]) for c in cats])
+
         self._seccion("Productos más vendidos", [
-            (f"{t['producto']}  ({t['cantidad']})", _money(t["total"]))
+            (f"{t['producto']}  ({t['cantidad']})",
+             f"{_money(t['total'])}   ·   gana {_money(t['ganancia'])}")
             for t in reporte_service.top_productos(desde, hasta, 10)])
 
-        pp = reporte_service.por_proveedor(desde, hasta)
-        self._seccion("Compras por proveedor", [
-            (c["proveedor"], _money(c["total"])) for c in pp["compras"]])
+        self._seccion("Por proveedor", [
+            (p["proveedor"],
+             f"comprado {_money(p['comprado'])}  ({p['remitos']} rem.)   ·   "
+             f"{_deuda(p['deuda'])}")
+            for p in reporte_service.ranking_proveedores(desde, hasta)])
+
         self._seccion("Gastos por proveedor", [
-            (g["proveedor"], _money(g["total"])) for g in pp["gastos"]])
+            (g["proveedor"], _money(g["total"]))
+            for g in reporte_service.por_proveedor(desde, hasta)["gastos"]])
 
         self._seccion("Detalle de gastos del período", [
             (f"[{g['tipo']}] {g['descripcion']}"
@@ -117,11 +145,14 @@ class ReportesView(ctk.CTkFrame):
         color_neta = theme.VERDE if neta >= 0 else theme.ROJO
         tarjetas = [
             ("Ventas", str(r["ventas_cantidad"]), theme.TXT),
+            ("Unidades vendidas", _unidades(r["unidades"]), theme.TXT),
+            ("Ticket promedio", _money(r["ticket_promedio"]), theme.TXT),
             ("Total vendido", _money(r["total_vendido"]), theme.TXT),
             ("Costo total", _money(r["costo_total"]), theme.TXT),
             ("Ganancia bruta", _money(r["ganancia_bruta"]), theme.TXT),
             ("Gastos", _money(r["gastos_total"]), theme.TXT),
             ("Ganancia neta", _money(neta), color_neta),
+            ("Margen", f"{r['margen_pct']}%", theme.VERDE),
         ]
         for idx, (titulo, valor, color) in enumerate(tarjetas):
             card = ctk.CTkFrame(cont, fg_color=theme.CARD_BG, corner_radius=12)

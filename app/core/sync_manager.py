@@ -108,14 +108,15 @@ def _push_catalogo(local, cloud) -> int:
             for p in proveedores:
                 cur.execute(
                     """INSERT INTO proveedores
-                         (id, nombre, cuit, telefono, saldo_cuenta, activo, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                         (id, nombre, cuit, telefono, email, saldo_cuenta,
+                          activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO UPDATE SET
                          nombre = EXCLUDED.nombre, cuit = EXCLUDED.cuit,
-                         telefono = EXCLUDED.telefono,
+                         telefono = EXCLUDED.telefono, email = EXCLUDED.email,
                          saldo_cuenta = EXCLUDED.saldo_cuenta,
                          activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
-                    (p["id"], p["nombre"], p["cuit"], p["telefono"],
+                    (p["id"], p["nombre"], p["cuit"], p["telefono"], p["email"],
                      _num(p["saldo_cuenta"]), bool(p["activo"]), _dt(p["updated_at"])),
                 )
     for c in clientes:

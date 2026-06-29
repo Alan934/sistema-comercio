@@ -44,6 +44,7 @@ class PesoDialog(ModalBase):
         ctk.CTkButton(cont, text="Agregar", width=100,
                       command=self._confirmar).pack(side="left", padx=6)
 
+        self._pie_atajos(bind_enter=False)
         self.after(50, self.entry.focus_set)
 
     def _recalcular(self, _event=None) -> None:
