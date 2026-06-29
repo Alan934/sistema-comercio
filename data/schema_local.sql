@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS productos (
     costo_compra         NUMERIC(12,2) NOT NULL DEFAULT 0,
     precio_venta         NUMERIC(12,2) NOT NULL DEFAULT 0,
     margen_pct           NUMERIC(6,2),                -- override del margen (NULL = usa la categoría)
+    ubicacion            TEXT,                        -- dónde está físicamente (ej. "Depósito 1")
     stock_actual         NUMERIC(12,3) NOT NULL DEFAULT 0,
     stock_minimo         NUMERIC(12,3) NOT NULL DEFAULT 0,
     controla_stock       INTEGER NOT NULL DEFAULT 1,

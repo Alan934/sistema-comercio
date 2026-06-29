@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 import customtkinter as ctk
 
 from app.core import pricing
-from app.services import categoria_service
+from app.services import categoria_service, stock_service
 from app.ui import theme
 from app.ui.dialogs.base import ModalBase
 
@@ -83,10 +83,18 @@ class ProductoDialog(ModalBase):
         _fila_entry(6, "Stock mínimo", "stock_minimo",
                     str(p.get("stock_minimo", "0")))
 
-        fila = 7
+        # Ubicación: combobox editable que sugiere las ubicaciones ya usadas.
+        ctk.CTkLabel(self, text="Ubicación", anchor="w").grid(
+            row=7, column=0, sticky="w", padx=(20, 8), pady=5)
+        self.cmb_ubicacion = ctk.CTkComboBox(
+            self, width=260, values=stock_service.listar_ubicaciones())
+        self.cmb_ubicacion.set(p.get("ubicacion") or "")
+        self.cmb_ubicacion.grid(row=7, column=1, padx=(8, 20), pady=5, sticky="w")
+
+        fila = 8
         if not self.es_edicion:
-            _fila_entry(7, "Stock inicial", "stock_actual", "0")
-            fila = 8
+            _fila_entry(8, "Stock inicial", "stock_actual", "0")
+            fila = 9
 
         self.lbl_hint = ctk.CTkLabel(self, text="", text_color=theme.TXT_MUTED,
                                      font=theme.fuente(12), anchor="w")
@@ -179,6 +187,7 @@ class ProductoDialog(ModalBase):
             "codigo_barra": self._entries["codigo_barra"].get().strip() or None,
             "categoria_id": self._cat_id.get(self.opt_cat.get()),
             "margen_pct": mtxt or None,
+            "ubicacion": self.cmb_ubicacion.get().strip() or None,
             "es_pesable": bool(self.var_pesable.get()),
             "controla_vencimiento": bool(self.var_venc.get()),
             "controla_stock": bool(self.var_stock.get()),

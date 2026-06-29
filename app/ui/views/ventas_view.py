@@ -46,7 +46,7 @@ class VentasView(ctk.CTkFrame):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=(0, 18))
         main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(1, weight=1)
+        main.grid_rowconfigure(2, weight=1)
 
         scanbar = ctk.CTkFrame(main, fg_color="transparent")
         scanbar.grid(row=0, column=0, sticky="ew", pady=(0, 12))
@@ -67,9 +67,22 @@ class VentasView(ctk.CTkFrame):
                       hover_color=theme.GHOST,
                       command=self._consultar_precio).grid(row=0, column=2)
 
+        cab = ctk.CTkFrame(main, fg_color="transparent")
+        cab.grid(row=1, column=0, sticky="ew", pady=(0, 2))
+        cab.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(cab, text="Cantidad", width=140, anchor="w",
+                     font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
+            row=0, column=0, padx=(8, 0))
+        ctk.CTkLabel(cab, text="Producto", anchor="w",
+                     font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
+            row=0, column=1, padx=12, sticky="w")
+        ctk.CTkLabel(cab, text="Subtotal", width=130, anchor="e",
+                     font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
+            row=0, column=2, padx=(0, 8))
+
         self.tabla = ctk.CTkScrollableFrame(main, fg_color=theme.CARD_BG,
                                             corner_radius=12)
-        self.tabla.grid(row=1, column=0, sticky="nsew")
+        self.tabla.grid(row=2, column=0, sticky="nsew")
         self.tabla.grid_columnconfigure(0, weight=1)
 
         # --- Columna derecha: panel de cobro ---

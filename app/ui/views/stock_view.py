@@ -52,6 +52,16 @@ class StockView(ctk.CTkFrame):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._recibir_remito).grid(row=0, column=4)
 
+        # Filtro por ubicación (segunda línea del encabezado).
+        ctk.CTkLabel(top, text="Ubicación:", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).grid(row=1, column=0, sticky="w",
+                                                      pady=(8, 0))
+        self.opt_ubic = ctk.CTkOptionMenu(
+            top, values=["Todas"], width=220, font=theme.fuente(13),
+            command=lambda _v: self._render_tabla())
+        self.opt_ubic.set("Todas")
+        self.opt_ubic.grid(row=1, column=1, sticky="w", padx=8, pady=(8, 0))
+
         # --- Banner de alertas ---
         self.banner = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=10)
         self.banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(2, 8))
@@ -89,6 +99,11 @@ class StockView(ctk.CTkFrame):
 
     def _recargar(self) -> None:
         self._productos = stock_service.listar_productos()
+        ubicaciones = ["Todas"] + stock_service.listar_ubicaciones()
+        actual = self.opt_ubic.get()
+        self.opt_ubic.configure(values=ubicaciones)
+        if actual not in ubicaciones:
+            self.opt_ubic.set("Todas")
         self._render_tabla()
         self._render_alertas()
 
@@ -109,13 +124,17 @@ class StockView(ctk.CTkFrame):
 
     def _render_tabla(self) -> None:
         filtro = self.ent_buscar.get().strip().lower()
+        ubic_sel = self.opt_ubic.get()
         for w in self.tabla.winfo_children():
             w.destroy()
-        visibles = [p for p in self._productos
-                    if not filtro or filtro in p.nombre.lower()]
+        visibles = [
+            p for p in self._productos
+            if (not filtro or filtro in p.nombre.lower())
+            and (ubic_sel == "Todas" or (p.ubicacion or "") == ubic_sel)]
         if not visibles:
             txt = ("No hay productos.\nCargá el primero o recibí un remito."
-                   if not filtro else "Ningún producto coincide con la búsqueda.")
+                   if not filtro and ubic_sel == "Todas"
+                   else "Ningún producto coincide con el filtro.")
             ctk.CTkLabel(self.tabla, text=txt, font=theme.fuente(14),
                          text_color=theme.TXT_MUTED, justify="center").pack(pady=36)
             return
@@ -124,9 +143,15 @@ class StockView(ctk.CTkFrame):
             f.pack(fill="x", padx=8, pady=2)
             f.grid_columnconfigure(0, weight=1)
             stock_txt = f"{p.stock_actual} kg" if p.es_pesable else f"{p.stock_actual}"
-            ctk.CTkLabel(f, text=p.nombre, width=250, anchor="w",
-                         font=theme.fuente(15), text_color=theme.TXT).grid(
-                row=0, column=0, padx=4, sticky="w")
+            # Nombre + ubicación (debajo, en gris).
+            celda = ctk.CTkFrame(f, fg_color="transparent")
+            celda.grid(row=0, column=0, padx=4, sticky="w")
+            ctk.CTkLabel(celda, text=p.nombre, width=246, anchor="w",
+                         font=theme.fuente(15), text_color=theme.TXT).pack(anchor="w")
+            if p.ubicacion:
+                ctk.CTkLabel(celda, text=f"Ubic. {p.ubicacion}", anchor="w",
+                             font=theme.fuente(11),
+                             text_color=theme.TXT_MUTED).pack(anchor="w")
             ctk.CTkLabel(f, text=(p.codigo_barra or "—"), width=130, anchor="w",
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
                 row=0, column=1, padx=4)

@@ -17,3 +17,4 @@ class Producto:
     activo: bool
     categoria_id: str | None = None
     margen_pct: Decimal | None = None   # override del margen de la categoría
+    ubicacion: str | None = None        # dónde está físicamente

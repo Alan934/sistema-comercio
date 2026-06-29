@@ -9,7 +9,7 @@ from app.models.producto import Producto
 
 _COLS = ("id, codigo_barra, nombre, es_pesable, unidad_medida, "
          "precio_venta, costo_compra, stock_actual, controla_stock, activo, "
-         "categoria_id, margen_pct")
+         "categoria_id, margen_pct, ubicacion")
 
 
 def _to_producto(row: sqlite3.Row) -> Producto:
@@ -27,6 +27,7 @@ def _to_producto(row: sqlite3.Row) -> Producto:
         categoria_id=row["categoria_id"],
         margen_pct=(Decimal(str(row["margen_pct"]))
                     if row["margen_pct"] is not None else None),
+        ubicacion=row["ubicacion"],
     )
 
 
@@ -71,12 +72,12 @@ def crear(conn: sqlite3.Connection, datos: dict) -> None:
     conn.execute(
         """INSERT INTO productos
              (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
-              costo_compra, precio_venta, margen_pct, stock_actual, stock_minimo,
-              controla_stock, controla_vencimiento, activo, updated_at)
+              costo_compra, precio_venta, margen_pct, ubicacion, stock_actual,
+              stock_minimo, controla_stock, controla_vencimiento, activo, updated_at)
            VALUES
              (:id, :codigo_barra, :nombre, :categoria_id, :es_pesable, :unidad_medida,
-              :costo_compra, :precio_venta, :margen_pct, :stock_actual, :stock_minimo,
-              :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
+              :costo_compra, :precio_venta, :margen_pct, :ubicacion, :stock_actual,
+              :stock_minimo, :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
         datos,
     )
 
@@ -89,7 +90,7 @@ def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
              categoria_id = :categoria_id, es_pesable = :es_pesable,
              unidad_medida = :unidad_medida, costo_compra = :costo_compra,
              precio_venta = :precio_venta, margen_pct = :margen_pct,
-             stock_minimo = :stock_minimo,
+             ubicacion = :ubicacion, stock_minimo = :stock_minimo,
              controla_stock = :controla_stock,
              controla_vencimiento = :controla_vencimiento,
              activo = :activo, updated_at = :updated_at
@@ -118,6 +119,14 @@ def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
         "UPDATE productos SET costo_compra = ?, updated_at = ? WHERE id = ?",
         (str(costo), ahora_iso(), producto_id),
     )
+
+
+def ubicaciones_distintas(conn: sqlite3.Connection) -> list[str]:
+    """Ubicaciones ya usadas (para sugerir y filtrar)."""
+    return [r["ubicacion"] for r in conn.execute(
+        "SELECT DISTINCT ubicacion FROM productos "
+        "WHERE ubicacion IS NOT NULL AND TRIM(ubicacion) <> '' "
+        "ORDER BY ubicacion").fetchall()]
 
 
 def ids_por_categoria(conn: sqlite3.Connection, categoria_id: str) -> list[str]:
@@ -214,13 +223,14 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
             """UPDATE productos SET
                  codigo_barra = ?, nombre = ?, categoria_id = ?, es_pesable = ?,
                  unidad_medida = ?, precio_venta = ?, costo_compra = ?,
-                 margen_pct = ?, stock_minimo = ?, controla_stock = ?,
+                 margen_pct = ?, ubicacion = ?, stock_minimo = ?, controla_stock = ?,
                  controla_vencimiento = ?, activo = ?, updated_at = ?
                WHERE id = ?""",
             (fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
-             _txt_null(fila.get("margen_pct")), _txt(fila["stock_minimo"]),
+             _txt_null(fila.get("margen_pct")), fila.get("ubicacion"),
+             _txt(fila["stock_minimo"]),
              _ib(fila["controla_stock"]), _ib(fila["controla_vencimiento"]),
              _ib(fila["activo"]), _ts(fila["updated_at"]), fila["id"]),
         )
@@ -228,13 +238,14 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
         conn.execute(
             """INSERT INTO productos
                  (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
-                  precio_venta, costo_compra, margen_pct, stock_actual, stock_minimo,
-                  controla_stock, controla_vencimiento, activo, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  precio_venta, costo_compra, margen_pct, ubicacion, stock_actual,
+                  stock_minimo, controla_stock, controla_vencimiento, activo, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (fila["id"], fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
-             _txt_null(fila.get("margen_pct")), _txt(fila["stock_actual"]),
+             _txt_null(fila.get("margen_pct")), fila.get("ubicacion"),
+             _txt(fila["stock_actual"]),
              _txt(fila["stock_minimo"]), _ib(fila["controla_stock"]),
              _ib(fila["controla_vencimiento"]), _ib(fila["activo"]),
              _ts(fila["updated_at"])),

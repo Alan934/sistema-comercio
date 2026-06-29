@@ -175,15 +175,26 @@ class RemitoDialog(ModalBase):
         ctk.CTkButton(barra, text="Agregar", width=110, height=40,
                       command=self._on_scan).grid(row=0, column=1)
 
+        # Encabezado de columnas.
+        cabecera = ctk.CTkFrame(self, fg_color="transparent")
+        cabecera.grid(row=2, column=0, sticky="ew", padx=20, pady=(4, 0))
+        for col, (txt, w) in enumerate(
+                [("Cant.", 60), ("Producto", 230), ("Costo unit.", 110),
+                 ("Subtotal", 100), ("", 40)]):
+            ctk.CTkLabel(cabecera, text=txt, width=w, anchor="w",
+                         font=theme.fuente(12, "bold"),
+                         text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
+
         # Lista de renglones.
-        self.lista = ctk.CTkScrollableFrame(self, width=560, height=240)
-        self.lista.grid(row=2, column=0, sticky="nsew", padx=16, pady=6)
-        self.grid_rowconfigure(2, weight=1)
+        self.lista = ctk.CTkScrollableFrame(self, width=560, height=220,
+                                            fg_color=theme.CARD_BG, corner_radius=12)
+        self.lista.grid(row=3, column=0, sticky="nsew", padx=16, pady=6)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # Pie: total + acciones.
         pie = ctk.CTkFrame(self, fg_color="transparent")
-        pie.grid(row=3, column=0, sticky="ew", padx=16, pady=(6, 16))
+        pie.grid(row=4, column=0, sticky="ew", padx=16, pady=(6, 16))
         pie.grid_columnconfigure(0, weight=1)
         self.lbl_total = ctk.CTkLabel(pie, text="TOTAL: $0.00",
                                       font=("", 20, "bold"))
@@ -229,20 +240,21 @@ class RemitoDialog(ModalBase):
         total = Decimal("0.00")
         for i, (item, nombre) in enumerate(self._items):
             total += item.subtotal
-            fila = ctk.CTkFrame(self.lista, fg_color="transparent")
-            fila.grid(row=i, column=0, sticky="ew", pady=2)
-            fila.grid_columnconfigure(0, weight=1)
             venc = f"  · vence {item.fecha_vencimiento}" if item.fecha_vencimiento else ""
-            ctk.CTkLabel(
-                fila, anchor="w",
-                text=f"{item.cantidad} x {nombre} @ ${item.costo_unitario}{venc}"
-            ).grid(row=0, column=0, sticky="w", padx=4)
-            ctk.CTkLabel(fila, text=f"${item.subtotal}", width=110).grid(
-                row=0, column=1, padx=4)
+            fila = ctk.CTkFrame(self.lista, fg_color="transparent")
+            fila.pack(fill="x", padx=8, pady=2)
+            ctk.CTkLabel(fila, text=f"{item.cantidad}", width=60,
+                         anchor="w").grid(row=0, column=0, padx=4)
+            ctk.CTkLabel(fila, text=f"{nombre}{venc}", width=230,
+                         anchor="w").grid(row=0, column=1, padx=4)
+            ctk.CTkLabel(fila, text=f"${item.costo_unitario:,.2f}", width=110,
+                         anchor="w").grid(row=0, column=2, padx=4)
+            ctk.CTkLabel(fila, text=f"${item.subtotal:,.2f}", width=100,
+                         anchor="w").grid(row=0, column=3, padx=4)
             ctk.CTkButton(fila, text="✕", width=36, fg_color="#b33",
                           hover_color="#922",
                           command=lambda idx=i: self._quitar(idx)).grid(
-                row=0, column=2, padx=4)
+                row=0, column=4, padx=4)
         self.lbl_total.configure(text=f"TOTAL: ${total:,.2f}")
 
     # --- Confirmación -------------------------------------------------------

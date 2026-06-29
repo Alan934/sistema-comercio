@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS productos (
     costo_compra         NUMERIC(12,2) NOT NULL DEFAULT 0,
     precio_venta         NUMERIC(12,2) NOT NULL DEFAULT 0,
     margen_pct           NUMERIC(6,2),
+    ubicacion            TEXT,
     stock_actual         NUMERIC(12,3) NOT NULL DEFAULT 0,
     stock_minimo         NUMERIC(12,3) NOT NULL DEFAULT 0,
     controla_stock       BOOLEAN NOT NULL DEFAULT TRUE,

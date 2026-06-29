@@ -81,6 +81,17 @@ class CategoriasManager(ModalBase):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._nueva).grid(row=0, column=1)
 
+        encab = ctk.CTkFrame(self, fg_color="transparent")
+        encab.pack(fill="x", padx=24, pady=(2, 0))
+        encab.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(encab, text="Categoría", anchor="w",
+                     font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
+            row=0, column=0, sticky="w")
+        ctk.CTkLabel(encab, text="Margen", width=110, anchor="e",
+                     font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
+            row=0, column=1, padx=4)
+        ctk.CTkLabel(encab, text="", width=70).grid(row=0, column=2, padx=4)
+
         self.lista = ctk.CTkScrollableFrame(self, width=440, height=320,
                                             fg_color=theme.CARD_BG, corner_radius=12)
         self.lista.pack(padx=16, pady=(0, 8), fill="both", expand=True)

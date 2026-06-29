@@ -30,6 +30,7 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
         "nombre": nombre,
         "categoria_id": datos.get("categoria_id"),
         "margen_pct": str(margen) if margen is not None else None,
+        "ubicacion": (datos.get("ubicacion") or "").strip() or None,
         "es_pesable": 1 if datos.get("es_pesable") else 0,
         "unidad_medida": datos.get("unidad_medida") or ("KG" if datos.get("es_pesable") else "UN"),
         "costo_compra": str(datos.get("costo_compra", "0")),
@@ -100,6 +101,14 @@ def obtener_producto(producto_id: str) -> dict | None:
     try:
         row = producto_repo.obtener(conn, producto_id)
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def listar_ubicaciones() -> list[str]:
+    conn = db_local.connect()
+    try:
+        return producto_repo.ubicaciones_distintas(conn)
     finally:
         conn.close()
 

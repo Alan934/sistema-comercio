@@ -68,7 +68,7 @@ def _pull_catalogo(local, cloud) -> int:
         cur.execute(
             """SELECT id, codigo_barra, nombre, categoria_id, es_pesable,
                       unidad_medida, precio_venta, costo_compra, margen_pct,
-                      stock_actual, stock_minimo, controla_stock,
+                      ubicacion, stock_actual, stock_minimo, controla_stock,
                       controla_vencimiento, activo, updated_at
                FROM productos"""
         )
