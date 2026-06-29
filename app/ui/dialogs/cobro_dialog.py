@@ -1,12 +1,12 @@
-"""Modal de cobro: soporta pago dividido (efectivo, transferencia, tarjeta)
-y fiado a cuenta corriente de un cliente.
+"""Modal de cobro: pago dividido (efectivo, transferencia, tarjeta) y fiado.
 
 Reglas:
   - La suma de transferencia + tarjeta + fiado no puede superar el total.
-  - El resto lo cubre el efectivo. Si el cliente paga con más efectivo del
-    necesario, se muestra el VUELTO (pero se registra solo lo que corresponde,
-    así pagos_venta siempre suma exactamente el total).
-  - Si hay fiado, es obligatorio elegir un cliente.
+  - El resto lo cubre el efectivo. Si pagan con más efectivo del necesario, se
+    muestra el VUELTO (pero se registra solo lo que corresponde, así pagos_venta
+    suma exactamente el total).
+  - El selector de cliente aparece SOLO si se carga un monto en Fiado; ahí se
+    puede buscar el cliente o crear uno nuevo al instante.
 
 Devuelve (lista_de_pagos, cliente_id) o None si se cancela.
 """
@@ -14,15 +14,15 @@ from decimal import Decimal, InvalidOperation
 
 import customtkinter as ctk
 
-from app.models.cliente import Cliente
 from app.models.venta import Pago, EFECTIVO, TRANSFERENCIA, TARJETA, FIADO
+from app.ui import theme
 from app.ui.dialogs.base import ModalBase
+from app.ui.dialogs.buscar_cliente_dialog import BuscarClienteDialog
 
 CERO = Decimal("0.00")
 
 
 def _dec(texto: str) -> Decimal | None:
-    """Parsea un monto. '' -> 0. Texto inválido -> None."""
     texto = (texto or "").strip().replace(",", ".")
     if not texto:
         return CERO
@@ -34,17 +34,16 @@ def _dec(texto: str) -> Decimal | None:
 
 
 class CobroDialog(ModalBase):
-    def __init__(self, master, total: Decimal, clientes: list[Cliente]):
+    def __init__(self, master, total: Decimal):
         super().__init__(master, "Cobrar")
         self.total = total
-        self.clientes = clientes
-        self._mapa_clientes = {c.nombre: c.id for c in clientes}
+        self._cliente_id = None
+        self._cliente_nombre = None
 
-        ctk.CTkLabel(self, text=f"TOTAL A COBRAR: ${total:,.2f}",
-                     font=("", 22, "bold")).grid(row=0, column=0, columnspan=2,
-                                                 padx=24, pady=(20, 16))
+        ctk.CTkLabel(self, text=f"Total a cobrar: ${total:,.2f}",
+                     font=theme.fuente(22, "bold")).grid(
+            row=0, column=0, columnspan=2, padx=24, pady=(20, 16))
 
-        # Entradas por método de pago.
         self.entries: dict[str, ctk.CTkEntry] = {}
         filas = [
             ("Efectivo (paga con)", "efectivo"),
@@ -53,45 +52,69 @@ class CobroDialog(ModalBase):
             ("Fiado", FIADO),
         ]
         for i, (etiqueta, clave) in enumerate(filas, start=1):
-            ctk.CTkLabel(self, text=etiqueta, anchor="w").grid(
+            ctk.CTkLabel(self, text=etiqueta, anchor="w",
+                         font=theme.fuente(14)).grid(
                 row=i, column=0, padx=(24, 8), pady=4, sticky="w")
             ent = ctk.CTkEntry(self, width=160, justify="right", placeholder_text="0")
             ent.grid(row=i, column=1, padx=(8, 24), pady=4)
             ent.bind("<KeyRelease>", self._recalcular)
             self.entries[clave] = ent
 
-        # Botón rápido: efectivo exacto.
         ctk.CTkButton(self, text="Efectivo exacto", width=140, height=28,
+                      fg_color="transparent", text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST,
+                      hover_color=theme.GHOST,
                       command=self._efectivo_exacto).grid(
             row=5, column=0, columnspan=2, pady=(4, 8))
 
-        # Selector de cliente (para fiado).
-        ctk.CTkLabel(self, text="Cliente (fiado)", anchor="w").grid(
-            row=6, column=0, padx=(24, 8), pady=4, sticky="w")
-        nombres = list(self._mapa_clientes.keys()) or ["(sin clientes)"]
-        self.opt_cliente = ctk.CTkOptionMenu(self, values=nombres, width=160)
-        self.opt_cliente.set(nombres[0])
-        self.opt_cliente.grid(row=6, column=1, padx=(8, 24), pady=4)
+        # Fila de cliente: oculta hasta que haya monto en Fiado.
+        self.fila_cliente = ctk.CTkFrame(self, fg_color="transparent")
+        self.fila_cliente.grid(row=6, column=0, columnspan=2, padx=24,
+                               pady=4, sticky="ew")
+        self.fila_cliente.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(self.fila_cliente, text="Cliente del fiado:", anchor="w",
+                     font=theme.fuente(14)).grid(row=0, column=0, padx=(0, 8))
+        self.btn_cliente = ctk.CTkButton(
+            self.fila_cliente, text="Buscar o crear cliente", height=34,
+            corner_radius=8, fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+            command=self._elegir_cliente)
+        self.btn_cliente.grid(row=0, column=1, sticky="ew")
+        self.fila_cliente.grid_remove()
 
-        # Estado en vivo.
-        self.lbl_estado = ctk.CTkLabel(self, text="", font=("", 14, "bold"))
+        self.lbl_estado = ctk.CTkLabel(self, text="", font=theme.fuente(14, "bold"))
         self.lbl_estado.grid(row=7, column=0, columnspan=2, padx=24, pady=(10, 8))
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
         cont.grid(row=8, column=0, columnspan=2, pady=(4, 20))
         ctk.CTkButton(cont, text="Cancelar", width=120, fg_color="gray",
                       command=self._cancelar).pack(side="left", padx=8)
-        self.btn_cobrar = ctk.CTkButton(cont, text="Confirmar cobro", width=160,
-                                        command=self._confirmar)
-        self.btn_cobrar.pack(side="left", padx=8)
+        ctk.CTkButton(cont, text="Confirmar cobro", width=160,
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+                      command=self._confirmar).pack(side="left", padx=8)
 
         self.after(50, self.entries["efectivo"].focus_set)
         self._recalcular()
 
+    # --- Cliente (solo visible con fiado) -----------------------------------
+
+    def _toggle_cliente(self) -> None:
+        fiado = _dec(self.entries[FIADO].get())
+        if fiado and fiado > 0:
+            self.fila_cliente.grid()
+        else:
+            self.fila_cliente.grid_remove()
+
+    def _elegir_cliente(self) -> None:
+        cli = BuscarClienteDialog(self).mostrar()
+        if cli is None:
+            return
+        self._cliente_id = cli.id
+        self._cliente_nombre = cli.nombre
+        self.btn_cliente.configure(text=cli.nombre)
+
     # --- Cálculo en vivo ----------------------------------------------------
 
     def _leer(self) -> dict | None:
-        """Devuelve los montos parseados, o None si algún campo es inválido."""
         valores = {}
         for clave, ent in self.entries.items():
             v = _dec(ent.get())
@@ -101,7 +124,6 @@ class CobroDialog(ModalBase):
         return valores
 
     def _calcular(self):
-        """Retorna (otros, efectivo_necesario, vuelto, restante) o None si inválido."""
         v = self._leer()
         if v is None:
             return None
@@ -111,14 +133,14 @@ class CobroDialog(ModalBase):
         if efectivo_necesario < 0:
             return ("EXCESO", otros, None, None)
         if efectivo_necesario == 0:
-            vuelto = tendered  # si pagó efectivo de más sin necesitarlo
-            return (otros, CERO, vuelto, CERO)
+            return (otros, CERO, tendered, CERO)
         restante = efectivo_necesario - tendered
         if restante > 0:
             return (otros, efectivo_necesario, CERO, restante)
         return (otros, efectivo_necesario, tendered - efectivo_necesario, CERO)
 
     def _recalcular(self, _event=None) -> None:
+        self._toggle_cliente()
         calc = self._calcular()
         if calc is None:
             self.lbl_estado.configure(text="⚠ Hay un monto inválido",
@@ -128,7 +150,7 @@ class CobroDialog(ModalBase):
             self.lbl_estado.configure(
                 text="⚠ Los otros pagos superan el total", text_color="orange")
             return
-        _otros, efectivo_nec, vuelto, restante = calc
+        _otros, _efectivo_nec, vuelto, restante = calc
         if restante and restante > 0:
             self.lbl_estado.configure(text=f"Falta: ${restante:,.2f}",
                                       text_color="orange")
@@ -173,11 +195,11 @@ class CobroDialog(ModalBase):
 
         cliente_id = None
         if v[FIADO] > 0:
-            cliente_id = self._mapa_clientes.get(self.opt_cliente.get())
-            if cliente_id is None:
+            if self._cliente_id is None:
                 self.lbl_estado.configure(
                     text="⚠ Elegí un cliente para el fiado", text_color="orange")
                 return
+            cliente_id = self._cliente_id
             pagos.append(Pago(FIADO, v[FIADO]))
 
         if not pagos:

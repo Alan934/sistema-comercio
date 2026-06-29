@@ -9,6 +9,7 @@ from app.services import cliente_service
 from app.ui import theme
 from app.ui.dialogs.cliente_dialog import ClienteDialog
 from app.ui.dialogs.proveedor_dialog import MontoDialog
+from app.ui.dialogs.ajuste_saldo_dialog import AjusteSaldoDialog
 
 
 def _money(v) -> str:
@@ -81,12 +82,20 @@ class ClientesView(ctk.CTkFrame):
             ctk.CTkLabel(f, text=txt, width=140, anchor="w",
                          font=theme.fuente(15, "bold"), text_color=color).grid(
                 row=0, column=2, padx=4)
-            ctk.CTkButton(f, text="Registrar pago", width=140, height=32,
+            acciones = ctk.CTkFrame(f, fg_color="transparent")
+            acciones.grid(row=0, column=3, padx=4)
+            ctk.CTkButton(acciones, text="Registrar pago", width=130, height=32,
                           corner_radius=8, font=theme.fuente(13),
                           fg_color="transparent", text_color=theme.ACCENT,
                           hover_color=theme.GHOST,
                           command=lambda cid=c.id, n=c.nombre, s=c.saldo_cuenta:
-                          self._pagar(cid, n, s)).grid(row=0, column=3, padx=4)
+                          self._pagar(cid, n, s)).pack(side="left", padx=(0, 4))
+            ctk.CTkButton(acciones, text="Ajustar", width=80, height=32,
+                          corner_radius=8, font=theme.fuente(13),
+                          fg_color="transparent", text_color=theme.TXT_MUTED,
+                          hover_color=theme.GHOST,
+                          command=lambda cid=c.id, n=c.nombre, s=c.saldo_cuenta:
+                          self._ajustar(cid, n, s)).pack(side="left")
 
     def _nuevo(self) -> None:
         datos = ClienteDialog(self).mostrar()
@@ -119,5 +128,18 @@ class ClientesView(ctk.CTkFrame):
             cliente_service.registrar_pago(cliente_id, monto)
         except cliente_service.ClienteError as e:
             messagebox.showerror("No se pudo registrar", str(e))
+            return
+        self._recargar()
+
+    def _ajustar(self, cliente_id: str, nombre: str, saldo) -> None:
+        texto, _ = _texto_saldo(saldo)
+        nuevo = AjusteSaldoDialog(self, nombre, "¿Cuánto te debe en total?",
+                                  texto, saldo).mostrar()
+        if nuevo is None:
+            return
+        try:
+            cliente_service.ajustar_saldo(cliente_id, nuevo)
+        except cliente_service.ClienteError as e:
+            messagebox.showerror("No se pudo ajustar", str(e))
             return
         self._recargar()

@@ -26,6 +26,31 @@ def crear(nombre: str, telefono: str | None = None,
     return cliente_id
 
 
+def ajustar_saldo(cliente_id: str, nuevo_saldo: Decimal) -> None:
+    """Corrige el saldo a un valor concreto. Registra la diferencia como un
+    movimiento de ajuste (deja rastro)."""
+    if nuevo_saldo < 0:
+        raise ClienteError("El saldo no puede ser negativo.")
+    conn = db_local.connect()
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT saldo_cuenta FROM clientes WHERE id = ?",
+                (cliente_id,)).fetchone()
+            if row is None:
+                raise ClienteError("Cliente inexistente.")
+            diferencia = nuevo_saldo - Decimal(str(row["saldo_cuenta"]))
+            if diferencia == 0:
+                return
+            tipo = cuenta_repo.DEBE if diferencia > 0 else cuenta_repo.HABER
+            cuenta_repo.registrar_movimiento(
+                conn, entidad_tipo="CLIENTE", entidad_id=cliente_id,
+                tipo=tipo, monto=abs(diferencia), referencia_tipo="AJUSTE",
+                nota="Ajuste de saldo")
+    finally:
+        conn.close()
+
+
 def registrar_pago(cliente_id: str, monto: Decimal,
                    nota: str | None = None) -> None:
     """Registra un pago del cliente: baja lo que nos debe (HABER)."""

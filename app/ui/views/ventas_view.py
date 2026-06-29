@@ -15,12 +15,13 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from app.models.carrito import Carrito
-from app.services import venta_service, cliente_service
+from app.services import venta_service
 from app.ui import theme
 from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
 from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
 from app.ui.dialogs.consulta_precio_dialog import ConsultaPrecioDialog
+from app.ui.dialogs.cantidad_dialog import CantidadDialog
 
 
 def _money(d: Decimal) -> str:
@@ -166,22 +167,39 @@ class VentasView(ctk.CTkFrame):
         fila = ctk.CTkFrame(self.tabla, fg_color="transparent")
         fila.pack(fill="x", padx=8, pady=4)
 
+        # Controles de cantidad a la izquierda.
+        ctrl = ctk.CTkFrame(fila, fg_color="transparent")
+        ctrl.pack(side="left")
         if item.es_pesable:
-            badge_txt, bg, fg = f"{item.cantidad}\nkg", theme.BADGE_KG_BG, theme.BADGE_KG_TXT
+            # Pesable: el badge muestra el peso y al tocarlo se edita.
+            ctk.CTkButton(ctrl, text=f"{item.cantidad}\nkg", width=54, height=42,
+                          corner_radius=8, fg_color=theme.BADGE_KG_BG,
+                          text_color=theme.BADGE_KG_TXT, hover_color=theme.GHOST,
+                          font=theme.fuente(12, "bold"),
+                          command=lambda idx=indice: self._editar_cantidad(idx)
+                          ).pack(side="left")
             unidad = f"{_money(item.precio_unitario)} / kg"
         else:
-            badge_txt, bg, fg = f"{int(item.cantidad)}", theme.BADGE_BG, theme.BADGE_TXT
+            ctk.CTkButton(ctrl, text="−", width=32, height=42, corner_radius=8,
+                          fg_color="transparent", text_color=theme.TXT,
+                          hover_color=theme.GHOST, font=theme.fuente(18),
+                          command=lambda idx=indice: self._sumar(idx, -1)).pack(side="left")
+            ctk.CTkButton(ctrl, text=f"{int(item.cantidad)}", width=44, height=42,
+                          corner_radius=8, fg_color=theme.BADGE_BG,
+                          text_color=theme.BADGE_TXT, hover_color=theme.GHOST,
+                          font=theme.fuente(15, "bold"),
+                          command=lambda idx=indice: self._editar_cantidad(idx)
+                          ).pack(side="left", padx=3)
+            ctk.CTkButton(ctrl, text="+", width=32, height=42, corner_radius=8,
+                          fg_color="transparent", text_color=theme.TXT,
+                          hover_color=theme.GHOST, font=theme.fuente(18),
+                          command=lambda idx=indice: self._sumar(idx, 1)).pack(side="left")
             unidad = f"{_money(item.precio_unitario)} c/u"
-
-        ctk.CTkLabel(fila, text=badge_txt, width=38, height=38, corner_radius=8,
-                     fg_color=bg, text_color=fg,
-                     font=theme.fuente(13, "bold")).pack(side="left")
 
         medio = ctk.CTkFrame(fila, fg_color="transparent")
         medio.pack(side="left", fill="x", expand=True, padx=12)
         ctk.CTkLabel(medio, text=item.descripcion, anchor="w",
-                     font=theme.fuente(15), text_color=theme.TXT).pack(
-            anchor="w")
+                     font=theme.fuente(15), text_color=theme.TXT).pack(anchor="w")
         ctk.CTkLabel(medio, text=unidad, anchor="w", font=theme.fuente(12),
                      text_color=theme.TXT_MUTED).pack(anchor="w")
 
@@ -194,6 +212,22 @@ class VentasView(ctk.CTkFrame):
                      anchor="e", font=theme.fuente(15, "bold"),
                      text_color=theme.TXT).pack(side="right", padx=(0, 6))
 
+    def _sumar(self, indice: int, delta: int) -> None:
+        item = self.carrito.items[indice]
+        self.carrito.cambiar_cantidad(indice, item.cantidad + delta)
+        self._refrescar()
+        self.entry_scan.focus_set()
+
+    def _editar_cantidad(self, indice: int) -> None:
+        item = self.carrito.items[indice]
+        nueva = CantidadDialog(self, item.descripcion, item.cantidad,
+                               item.es_pesable).mostrar()
+        if nueva is None:
+            return
+        self.carrito.cambiar_cantidad(indice, nueva)
+        self._refrescar()
+        self.entry_scan.focus_set()
+
     def _quitar(self, indice: int) -> None:
         self.carrito.quitar(indice)
         self._refrescar()
@@ -205,8 +239,7 @@ class VentasView(ctk.CTkFrame):
         if self.carrito.esta_vacio():
             messagebox.showinfo("Carrito vacío", "Agregá productos antes de cobrar.")
             return
-        clientes = cliente_service.listar_activos()
-        resultado = CobroDialog(self, self.carrito.total, clientes).mostrar()
+        resultado = CobroDialog(self, self.carrito.total).mostrar()
         if resultado is None:
             self.entry_scan.focus_set()
             return

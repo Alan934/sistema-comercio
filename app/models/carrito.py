@@ -62,6 +62,13 @@ class Carrito:
     def quitar(self, indice: int) -> None:
         del self.items[indice]
 
+    def cambiar_cantidad(self, indice: int, cantidad: Decimal) -> None:
+        """Fija la cantidad de un ítem. Si llega a cero (o menos), lo quita."""
+        if cantidad <= 0:
+            self.quitar(indice)
+        else:
+            self.items[indice].cantidad = cantidad
+
     def vaciar(self) -> None:
         self.items.clear()
 

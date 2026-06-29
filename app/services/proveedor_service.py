@@ -36,6 +36,31 @@ def listar_activos() -> list[Proveedor]:
         conn.close()
 
 
+def ajustar_saldo(proveedor_id: str, nuevo_saldo: Decimal) -> None:
+    """Corrige el saldo a un valor concreto (ej. dejarlo en 0). Registra la
+    diferencia como un movimiento de ajuste, así queda el rastro."""
+    if nuevo_saldo < 0:
+        raise ProveedorError("El saldo no puede ser negativo.")
+    conn = db_local.connect()
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT saldo_cuenta FROM proveedores WHERE id = ?",
+                (proveedor_id,)).fetchone()
+            if row is None:
+                raise ProveedorError("Proveedor inexistente.")
+            diferencia = nuevo_saldo - Decimal(str(row["saldo_cuenta"]))
+            if diferencia == 0:
+                return
+            tipo = cuenta_repo.DEBE if diferencia > 0 else cuenta_repo.HABER
+            cuenta_repo.registrar_movimiento(
+                conn, entidad_tipo="PROVEEDOR", entidad_id=proveedor_id,
+                tipo=tipo, monto=abs(diferencia), referencia_tipo="AJUSTE",
+                nota="Ajuste de saldo")
+    finally:
+        conn.close()
+
+
 def registrar_pago(proveedor_id: str, monto: Decimal,
                    nota: str | None = None) -> None:
     """Registra un pago a un proveedor: baja lo que le debemos (HABER)."""
