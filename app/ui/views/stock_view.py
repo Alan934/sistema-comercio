@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from app.services import stock_service, compra_service
 from app.ui import theme
+from app.ui.autocomplete import AutocompleteSimple
 from app.ui.dialogs.producto_dialog import ProductoDialog
 from app.ui.dialogs.remito_dialog import RemitoDialog
 from app.ui.dialogs.categorias_dialog import CategoriasManager
@@ -52,15 +53,19 @@ class StockView(ctk.CTkFrame):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._recibir_remito).grid(row=0, column=4)
 
-        # Filtro por ubicación (segunda línea del encabezado).
+        # Filtro por ubicación (segunda línea del encabezado): campo con
+        # autocompletado que filtra la ubicación mientras se escribe.
         ctk.CTkLabel(top, text="Ubicación:", font=theme.fuente(13),
                      text_color=theme.TXT_MUTED).grid(row=1, column=0, sticky="w",
                                                       pady=(8, 0))
-        self.opt_ubic = ctk.CTkOptionMenu(
-            top, values=["Todas"], width=220, font=theme.fuente(13),
-            command=lambda _v: self._render_tabla())
-        self.opt_ubic.set("Todas")
-        self.opt_ubic.grid(row=1, column=1, sticky="w", padx=8, pady=(8, 0))
+        self.ent_ubic = ctk.CTkEntry(
+            top, width=220, height=32, font=theme.fuente(13),
+            placeholder_text="Todas")
+        self.ent_ubic.grid(row=1, column=1, sticky="w", padx=8, pady=(8, 0))
+        self._auto_ubic = AutocompleteSimple(
+            self.ent_ubic, self, [],
+            on_seleccionar=lambda _v: self._render_tabla())
+        self.ent_ubic.bind("<KeyRelease>", lambda _e: self._render_tabla(), add="+")
 
         # --- Banner de alertas ---
         self.banner = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=10)
@@ -99,11 +104,7 @@ class StockView(ctk.CTkFrame):
 
     def _recargar(self) -> None:
         self._productos = stock_service.listar_productos()
-        ubicaciones = ["Todas"] + stock_service.listar_ubicaciones()
-        actual = self.opt_ubic.get()
-        self.opt_ubic.configure(values=ubicaciones)
-        if actual not in ubicaciones:
-            self.opt_ubic.set("Todas")
+        self._auto_ubic.set_opciones(stock_service.listar_ubicaciones())
         self._render_tabla()
         self._render_alertas()
 
@@ -124,16 +125,16 @@ class StockView(ctk.CTkFrame):
 
     def _render_tabla(self) -> None:
         filtro = self.ent_buscar.get().strip().lower()
-        ubic_sel = self.opt_ubic.get()
+        ubic_sel = self.ent_ubic.get().strip().lower()
         for w in self.tabla.winfo_children():
             w.destroy()
         visibles = [
             p for p in self._productos
             if (not filtro or filtro in p.nombre.lower())
-            and (ubic_sel == "Todas" or (p.ubicacion or "") == ubic_sel)]
+            and (not ubic_sel or ubic_sel in (p.ubicacion or "").lower())]
         if not visibles:
             txt = ("No hay productos.\nCargá el primero o recibí un remito."
-                   if not filtro and ubic_sel == "Todas"
+                   if not filtro and not ubic_sel
                    else "Ningún producto coincide con el filtro.")
             ctk.CTkLabel(self.tabla, text=txt, font=theme.fuente(14),
                          text_color=theme.TXT_MUTED, justify="center").pack(pady=36)

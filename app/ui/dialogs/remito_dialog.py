@@ -15,6 +15,7 @@ import customtkinter as ctk
 from app.models.compra import ItemCompra, CONTADO, CUENTA_CORRIENTE
 from app.services import venta_service, proveedor_service
 from app.ui import theme
+from app.ui.autocomplete import AutocompleteBuscador, AutocompleteSimple
 from app.ui.dialogs.base import ModalBase
 from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
 
@@ -151,10 +152,15 @@ class RemitoDialog(ModalBase):
         cab = ctk.CTkFrame(self)
         cab.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 6))
         ctk.CTkLabel(cab, text="Proveedor").grid(row=0, column=0, padx=8, pady=8, sticky="w")
-        nombres = list(self._mapa_prov.keys()) or ["(sin proveedores)"]
-        self.opt_prov = ctk.CTkOptionMenu(cab, values=nombres, width=220)
-        self.opt_prov.set(nombres[0])
-        self.opt_prov.grid(row=0, column=1, padx=8, pady=8)
+        nombres = list(self._mapa_prov.keys())
+        # Campo con autocompletado: filtra proveedores mientras se escribe.
+        self.ent_prov = ctk.CTkEntry(
+            cab, width=220,
+            placeholder_text="Buscá un proveedor…" if nombres else "(sin proveedores)")
+        if nombres:
+            self.ent_prov.insert(0, nombres[0])
+        self.ent_prov.grid(row=0, column=1, padx=8, pady=8)
+        self._auto_prov = AutocompleteSimple(self.ent_prov, self, nombres)
         ctk.CTkLabel(cab, text="N° remito").grid(row=0, column=2, padx=8, pady=8)
         self.ent_remito = ctk.CTkEntry(cab, width=140)
         self.ent_remito.grid(row=0, column=3, padx=8, pady=8)
@@ -171,9 +177,14 @@ class RemitoDialog(ModalBase):
             barra, placeholder_text="Escaneá o buscá un producto y Enter...",
             height=40)
         self.ent_scan.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.ent_scan.bind("<Return>", self._on_scan)
         ctk.CTkButton(barra, text="Agregar", width=110, height=40,
-                      command=self._on_scan).grid(row=0, column=1)
+                      command=lambda: self._auto_prod.enter()).grid(row=0, column=1)
+        # Autocompletado de productos: sugiere por nombre mientras se escribe;
+        # el Enter "directo" busca por código exacto (pistolita).
+        self._auto_prod = AutocompleteBuscador(
+            self.ent_scan, self,
+            on_seleccionar=self._agregar_producto,
+            on_enter_directo=self._on_scan)
 
         # Encabezado de columnas.
         cabecera = ctk.CTkFrame(self, fg_color="transparent")
@@ -210,20 +221,26 @@ class RemitoDialog(ModalBase):
     # --- Agregado de ítems --------------------------------------------------
 
     def _on_scan(self, _event=None) -> None:
+        """Enter 'directo': busca por código exacto o, si no, por nombre."""
         texto = self.ent_scan.get().strip()
-        self.ent_scan.delete(0, "end")
         if not texto:
             return
         prod = venta_service.buscar_por_codigo(texto)
         if prod is None:
             resultados = venta_service.buscar_por_nombre(texto)
             if not resultados:
+                self.ent_scan.delete(0, "end")
                 self.lbl_total.configure(text=f"Sin resultados para '{texto}'")
                 return
             prod = BuscarProductoDialog(self, resultados).mostrar()
             if prod is None:
                 self.ent_scan.focus_set()
                 return
+        self._agregar_producto(prod)
+
+    def _agregar_producto(self, prod) -> None:
+        """Abre el modal de renglón para el producto elegido y lo agrega."""
+        self.ent_scan.delete(0, "end")
         item = ItemRemitoDialog(self, prod).mostrar()
         if item is not None:
             self._items.append((item, prod.nombre))
@@ -263,13 +280,17 @@ class RemitoDialog(ModalBase):
         if not self._mapa_prov:
             self.lbl_total.configure(text="⚠ Primero creá un proveedor")
             return
+        proveedor_id = self._mapa_prov.get(self.ent_prov.get().strip())
+        if proveedor_id is None:
+            self.lbl_total.configure(text="⚠ Elegí un proveedor válido de la lista")
+            return
         if not self._items:
             self.lbl_total.configure(text="⚠ El remito no tiene productos")
             return
         condicion = (CUENTA_CORRIENTE if self.seg_cond.get() == "Cuenta corriente"
                      else CONTADO)
         self._aceptar({
-            "proveedor_id": self._mapa_prov.get(self.opt_prov.get()),
+            "proveedor_id": proveedor_id,
             "items": [it for it, _ in self._items],
             "nro_remito": self.ent_remito.get().strip() or None,
             "condicion": condicion,

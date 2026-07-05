@@ -1,10 +1,17 @@
-"""Autocompletado de productos: mientras se escribe muestra los resultados en
-un desplegable debajo del campo, navegables con ↑/↓ y seleccionables con Enter
-(o clic). También soporta Enter "directo" (ej. código de barra exacto).
+"""Autocompletado con desplegable debajo de un CTkEntry: mientras se escribe
+muestra los resultados que contienen los caracteres ingresados, navegables con
+↑/↓ y seleccionables con Enter (o clic).
 
 Se engancha a un CTkEntry existente. `contenedor` es el frame sobre el que se
-dibuja el desplegable (debe abarcar el área debajo del campo, para que no quede
-recortado).
+dibuja el desplegable: debe abarcar el área debajo del campo para que no quede
+recortado (normalmente el diálogo o la vista completa).
+
+Hay dos variantes:
+    AutocompleteBuscador  → busca productos por nombre (usado en la caja y al
+                            recibir un remito). Soporta Enter "directo" para
+                            códigos de barra exactos.
+    AutocompleteSimple    → filtra una lista fija de textos (categorías,
+                            ubicaciones, proveedores).
 """
 import customtkinter as ctk
 
@@ -15,12 +22,16 @@ _TECLAS_NAV = {"Up", "Down", "Return", "KP_Enter", "Escape", "Left", "Right",
                "Shift_L", "Shift_R", "Control_L", "Control_R", "Tab"}
 
 
-class AutocompleteBuscador:
-    def __init__(self, entry, contenedor, on_seleccionar,
-                 on_enter_directo=None, limite: int = 8):
+class _AutocompleteBase:
+    """Mecánica común del desplegable (render, navegación, mostrar/ocultar).
+
+    Las subclases definen qué se busca (`_buscar`), cómo se muestra cada fila
+    (`_texto_fila` / `_decorar_fila`), qué pasa al elegir (`_al_elegir`) y qué
+    hace Enter cuando no hay nada seleccionado (`_enter_sin_seleccion`).
+    """
+
+    def __init__(self, entry, contenedor, limite: int = 8):
         self.entry = entry
-        self.on_seleccionar = on_seleccionar
-        self.on_enter_directo = on_enter_directo
         self.limite = limite
         self._resultados = []
         self._filas = []
@@ -35,48 +46,64 @@ class AutocompleteBuscador:
         entry.bind("<Down>", self._nav_down)
         entry.bind("<Up>", self._nav_up)
         entry.bind("<Return>", self._on_enter)
-        entry.bind("<Escape>", lambda _e: self._ocultar())
+        entry.bind("<Escape>", self._on_escape)
         entry.bind("<FocusOut>", lambda _e: self.entry.after(150, self._ocultar))
+
+    # --- Hooks de la subclase ----------------------------------------------
+
+    def _buscar(self, texto: str) -> list:
+        raise NotImplementedError
+
+    def _mostrar_vacio(self) -> list:
+        """Resultados a mostrar cuando el campo está vacío (por defecto nada)."""
+        return []
+
+    def _texto_fila(self, item) -> str:
+        raise NotImplementedError
+
+    def _decorar_fila(self, fila, item) -> None:
+        pass
+
+    def _al_elegir(self, item) -> None:
+        raise NotImplementedError
+
+    def _enter_sin_seleccion(self):
+        return None
 
     # --- Búsqueda en vivo ---------------------------------------------------
 
     def _on_key(self, event) -> None:
         if event.keysym in _TECLAS_NAV:
             return
+        self._actualizar()
+
+    def _actualizar(self) -> None:
         texto = self.entry.get().strip()
         if not texto:
-            self._ocultar()
-            return
-        # Parece un código de barra (lo escanea la pistolita): no sugerir por
-        # nombre, así el Enter final hace la búsqueda por código exacta.
-        if texto.isdigit() and len(texto) >= 6:
-            self._ocultar()
-            return
-        self._resultados = venta_service.buscar_por_nombre(texto)[:self.limite]
+            self._resultados = self._mostrar_vacio()[:self.limite]
+        else:
+            self._resultados = self._buscar(texto)[:self.limite]
         self._render()
 
-    def _render(self) -> None:
+    def _render(self, auto_sel: bool = True) -> None:
         for w in self.drop.winfo_children():
             w.destroy()
         self._filas = []
         if not self._resultados:
             self._ocultar()
             return
-        self._sel = 0
-        for i, p in enumerate(self._resultados):
-            unidad = " /kg" if p.es_pesable else ""
-            texto = f"{p.nombre}"
-            precio = f"${p.precio_venta:,.2f}{unidad}"
+        # Al escribir, se resalta la primera coincidencia (Enter la elige). Al
+        # solo enfocar (auto_sel=False) no se resalta nada, así Enter no pisa el
+        # valor que ya tenía el campo.
+        self._sel = 0 if auto_sel else -1
+        for i, item in enumerate(self._resultados):
             fila = ctk.CTkButton(
-                self.drop, text=f"{texto}", anchor="w", height=34,
+                self.drop, text=self._texto_fila(item), anchor="w", height=34,
                 corner_radius=6, fg_color="transparent", text_color=theme.TXT,
                 hover_color=theme.GHOST, font=theme.fuente(14),
                 command=lambda idx=i: self._elegir(idx))
             fila.pack(fill="x", padx=4, pady=1)
-            # Precio a la derecha, sobre el mismo botón.
-            ctk.CTkLabel(fila, text=precio, font=theme.fuente(13),
-                         text_color=theme.TXT_MUTED, fg_color="transparent").place(
-                relx=1.0, rely=0.5, x=-10, anchor="e")
+            self._decorar_fila(fila, item)
             self._filas.append(fila)
         self._resaltar()
         self._mostrar()
@@ -99,6 +126,14 @@ class AutocompleteBuscador:
             self._visible = False
         self._sel = -1
 
+    def _on_escape(self, _e):
+        # Si el desplegable está abierto, Esc solo lo cierra (no propaga, para
+        # no cancelar el diálogo que también escucha Esc). Si no, deja propagar.
+        if self._visible:
+            self._ocultar()
+            return "break"
+        return None
+
     # --- Navegación ---------------------------------------------------------
 
     def _nav_down(self, _e):
@@ -120,15 +155,93 @@ class AutocompleteBuscador:
             self._elegir(self._sel)
             return "break"
         self._ocultar()
+        return self._enter_sin_seleccion()
+
+    def enter(self):
+        """Dispara la misma acción que apretar Enter (para un botón 'Buscar')."""
+        return self._on_enter(None)
+
+    def _elegir(self, idx: int) -> None:
+        item = self._resultados[idx]
+        self._ocultar()
+        self._al_elegir(item)
+
+
+class AutocompleteBuscador(_AutocompleteBase):
+    """Sugiere productos por nombre mientras se escribe."""
+
+    def __init__(self, entry, contenedor, on_seleccionar,
+                 on_enter_directo=None, limite: int = 8):
+        super().__init__(entry, contenedor, limite)
+        self.on_seleccionar = on_seleccionar
+        self.on_enter_directo = on_enter_directo
+
+    def _buscar(self, texto: str) -> list:
+        # Parece un código de barra (lo escanea la pistolita): no sugerir por
+        # nombre, así el Enter final hace la búsqueda por código exacta.
+        if texto.isdigit() and len(texto) >= 6:
+            return []
+        return venta_service.buscar_por_nombre(texto)
+
+    def _texto_fila(self, p) -> str:
+        return p.nombre
+
+    def _decorar_fila(self, fila, p) -> None:
+        unidad = " /kg" if p.es_pesable else ""
+        precio = f"${p.precio_venta:,.2f}{unidad}"
+        ctk.CTkLabel(fila, text=precio, font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED, fg_color="transparent").place(
+            relx=1.0, rely=0.5, x=-10, anchor="e")
+
+    def _al_elegir(self, p) -> None:
+        self.on_seleccionar(p)
+
+    def _enter_sin_seleccion(self):
         if self.on_enter_directo:
             self.on_enter_directo()
         return "break"
 
-    def enter(self) -> None:
-        """Dispara la misma acción que apretar Enter (para un botón 'Buscar')."""
-        self._on_enter(None)
 
-    def _elegir(self, idx: int) -> None:
-        prod = self._resultados[idx]
-        self._ocultar()
-        self.on_seleccionar(prod)
+class AutocompleteSimple(_AutocompleteBase):
+    """Filtra una lista fija de textos por substring (sin distinguir mayúsculas).
+
+    Al elegir una opción escribe su texto en el campo y llama on_seleccionar(texto)
+    si se pasó. Con `sugerir_al_focus`, al enfocar el campo vacío muestra todas
+    las opciones (útil cuando reemplaza a un desplegable).
+    """
+
+    def __init__(self, entry, contenedor, opciones, on_seleccionar=None,
+                 limite: int = 8, sugerir_al_focus: bool = True):
+        super().__init__(entry, contenedor, limite)
+        self._opciones = [str(o) for o in opciones]
+        self.on_seleccionar = on_seleccionar
+        self._sugerir_al_focus = sugerir_al_focus
+        if sugerir_al_focus:
+            entry.bind("<FocusIn>", self._on_focus_in)
+
+    def set_opciones(self, opciones) -> None:
+        self._opciones = [str(o) for o in opciones]
+
+    def _on_focus_in(self, _e) -> None:
+        # Al enfocar, se muestran todas las opciones y se selecciona el texto
+        # actual: así se puede elegir otra sin borrar a mano lo que ya había
+        # (el primer carácter que se escriba reemplaza la selección).
+        self.entry.select_range(0, "end")
+        self._resultados = self._opciones[:self.limite]
+        self._render(auto_sel=False)
+
+    def _buscar(self, texto: str) -> list:
+        t = texto.lower()
+        return [o for o in self._opciones if t in o.lower()]
+
+    def _mostrar_vacio(self) -> list:
+        return self._opciones if self._sugerir_al_focus else []
+
+    def _texto_fila(self, item) -> str:
+        return item
+
+    def _al_elegir(self, item) -> None:
+        self.entry.delete(0, "end")
+        self.entry.insert(0, item)
+        if self.on_seleccionar:
+            self.on_seleccionar(item)

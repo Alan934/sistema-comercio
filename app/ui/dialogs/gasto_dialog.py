@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from app.models.gasto import FIJO, VARIABLE
 from app.services import proveedor_service
+from app.ui.autocomplete import AutocompleteSimple
 from app.ui.dialogs.base import ModalBase
 
 SIN_PROVEEDOR = "(ninguno)"
@@ -45,9 +46,10 @@ class GastoDialog(ModalBase):
         ctk.CTkLabel(self, text="Proveedor (opcional)", anchor="w").grid(
             row=4, column=0, sticky="w", padx=(20, 8), pady=6)
         nombres = [SIN_PROVEEDOR] + list(self._mapa_prov.keys())
-        self.opt_prov = ctk.CTkOptionMenu(self, values=nombres, width=260)
-        self.opt_prov.set(SIN_PROVEEDOR)
-        self.opt_prov.grid(row=4, column=1, padx=(8, 20), pady=6)
+        self.ent_prov = ctk.CTkEntry(self, width=260)
+        self.ent_prov.insert(0, SIN_PROVEEDOR)
+        self.ent_prov.grid(row=4, column=1, padx=(8, 20), pady=6)
+        self._auto_prov = AutocompleteSimple(self.ent_prov, self, nombres)
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
         self.lbl_error.grid(row=5, column=0, columnspan=2, padx=20)
@@ -82,6 +84,6 @@ class GastoDialog(ModalBase):
             "tipo": FIJO if self.seg_tipo.get() == "Fijo" else VARIABLE,
             "descripcion": desc,
             "monto": monto,
-            "proveedor_id": self._mapa_prov.get(self.opt_prov.get()),
+            "proveedor_id": self._mapa_prov.get(self.ent_prov.get().strip()),
             "metodo": metodos[self.seg_metodo.get()],
         })

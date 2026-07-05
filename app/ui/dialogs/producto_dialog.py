@@ -13,6 +13,7 @@ import customtkinter as ctk
 from app.core import pricing
 from app.services import categoria_service, stock_service
 from app.ui import theme
+from app.ui.autocomplete import AutocompleteSimple
 from app.ui.dialogs.base import ModalBase
 
 SIN_CATEGORIA = "(sin categoría)"
@@ -59,18 +60,20 @@ class ProductoDialog(ModalBase):
         _fila_entry(1, "Código de barra", "codigo_barra",
                     str(p.get("codigo_barra") or ""))
 
-        # Categoría
+        # Categoría: campo con autocompletado (filtra mientras se escribe).
         ctk.CTkLabel(self, text="Categoría", anchor="w").grid(
             row=2, column=0, sticky="w", padx=(20, 8), pady=5)
-        self.opt_cat = ctk.CTkOptionMenu(self, width=260,
-                                         values=list(self._cat_id.keys()),
-                                         command=lambda _v: self._recalcular())
         actual = SIN_CATEGORIA
         for nombre, cid in self._cat_id.items():
             if cid == p.get("categoria_id"):
                 actual = nombre
-        self.opt_cat.set(actual)
-        self.opt_cat.grid(row=2, column=1, padx=(8, 20), pady=5, sticky="w")
+        self.ent_cat = ctk.CTkEntry(self, width=260)
+        self.ent_cat.insert(0, actual)
+        self.ent_cat.grid(row=2, column=1, padx=(8, 20), pady=5, sticky="w")
+        self._auto_cat = AutocompleteSimple(
+            self.ent_cat, self, list(self._cat_id.keys()),
+            on_seleccionar=lambda _v: self._recalcular())
+        self.ent_cat.bind("<KeyRelease>", self._recalcular, add="+")
 
         c = _fila_entry(3, "Costo de compra", "costo_compra",
                         str(p.get("costo_compra", "0")))
@@ -83,13 +86,15 @@ class ProductoDialog(ModalBase):
         _fila_entry(6, "Stock mínimo", "stock_minimo",
                     str(p.get("stock_minimo", "0")))
 
-        # Ubicación: combobox editable que sugiere las ubicaciones ya usadas.
+        # Ubicación: campo con autocompletado de las ubicaciones ya usadas
+        # (filtra mientras se escribe, como el buscador de la caja).
         ctk.CTkLabel(self, text="Ubicación", anchor="w").grid(
             row=7, column=0, sticky="w", padx=(20, 8), pady=5)
-        self.cmb_ubicacion = ctk.CTkComboBox(
-            self, width=260, values=stock_service.listar_ubicaciones())
-        self.cmb_ubicacion.set(p.get("ubicacion") or "")
-        self.cmb_ubicacion.grid(row=7, column=1, padx=(8, 20), pady=5, sticky="w")
+        self.ent_ubicacion = ctk.CTkEntry(self, width=260)
+        self.ent_ubicacion.insert(0, p.get("ubicacion") or "")
+        self.ent_ubicacion.grid(row=7, column=1, padx=(8, 20), pady=5, sticky="w")
+        self._auto_ubic = AutocompleteSimple(
+            self.ent_ubicacion, self, stock_service.listar_ubicaciones())
 
         fila = 8
         if not self.es_edicion:
@@ -142,7 +147,7 @@ class ProductoDialog(ModalBase):
                 return Decimal(mtxt)
             except InvalidOperation:
                 return None
-        return self._cat_margen.get(self._cat_id.get(self.opt_cat.get()))
+        return self._cat_margen.get(self._cat_id.get(self.ent_cat.get().strip()))
 
     def _recalcular(self, _event=None) -> None:
         margen = self._margen_aplicable()
@@ -185,9 +190,9 @@ class ProductoDialog(ModalBase):
         datos = {
             "nombre": nombre,
             "codigo_barra": self._entries["codigo_barra"].get().strip() or None,
-            "categoria_id": self._cat_id.get(self.opt_cat.get()),
+            "categoria_id": self._cat_id.get(self.ent_cat.get().strip()),
             "margen_pct": mtxt or None,
-            "ubicacion": self.cmb_ubicacion.get().strip() or None,
+            "ubicacion": self.ent_ubicacion.get().strip() or None,
             "es_pesable": bool(self.var_pesable.get()),
             "controla_vencimiento": bool(self.var_venc.get()),
             "controla_stock": bool(self.var_stock.get()),
