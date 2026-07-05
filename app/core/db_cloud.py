@@ -38,9 +38,26 @@ def asegurar_schema(conn) -> None:
     # Quita líneas de comentario antes de partir por ';'.
     lineas = [ln for ln in sql.splitlines() if not ln.strip().startswith("--")]
     limpio = "\n".join(lineas)
+    # Migraciones de columnas agregadas después de la creación original
+    # (CREATE IF NOT EXISTS no las añade a tablas ya existentes en Neon).
+    migraciones = [
+        "ALTER TABLE categorias ADD COLUMN IF NOT EXISTS margen_pct NUMERIC(6,2)",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS margen_pct NUMERIC(6,2)",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS ubicacion TEXT",
+        "ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS email TEXT",
+        "ALTER TABLE cuenta_movimientos ADD COLUMN IF NOT EXISTS metodo TEXT",
+        "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS "
+        "metodo TEXT NOT NULL DEFAULT 'EFECTIVO'",
+        "ALTER TABLE cierres_caja ADD COLUMN IF NOT EXISTS "
+        "cobros_efectivo NUMERIC(12,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE cierres_caja ADD COLUMN IF NOT EXISTS "
+        "pagos_efectivo NUMERIC(12,2) NOT NULL DEFAULT 0",
+    ]
     with conn.transaction():
         with conn.cursor() as cur:
             for sentencia in limpio.split(";"):
                 s = sentencia.strip()
                 if s:
                     cur.execute(s)
+            for m in migraciones:
+                cur.execute(m)

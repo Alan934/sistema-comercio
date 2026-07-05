@@ -21,9 +21,10 @@ def registrar_movimiento(
     entidad_id: str,
     tipo: str,                   # DEBE | HABER
     monto: Decimal,
-    referencia_tipo: str | None = None,   # VENTA | COMPRA | PAGO
+    referencia_tipo: str | None = None,   # VENTA | COMPRA | PAGO | AJUSTE
     referencia_id: str | None = None,
     nota: str | None = None,
+    metodo: str | None = None,            # medio de pago (solo en PAGO)
 ) -> None:
     tabla = "clientes" if entidad_tipo == "CLIENTE" else "proveedores"
     row = conn.execute(
@@ -46,10 +47,10 @@ def registrar_movimiento(
     conn.execute(
         """INSERT INTO cuenta_movimientos
            (id, entidad_tipo, entidad_id, fecha, tipo, monto, saldo_resultante,
-            referencia_tipo, referencia_id, nota, sincronizado, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+            referencia_tipo, referencia_id, nota, metodo, sincronizado, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
         (nuevo_id(), entidad_tipo, entidad_id, ahora_local(), tipo, str(monto),
-         str(nuevo_saldo), referencia_tipo, referencia_id, nota, ahora),
+         str(nuevo_saldo), referencia_tipo, referencia_id, nota, metodo, ahora),
     )
 
 

@@ -9,8 +9,8 @@ import customtkinter as ctk
 
 from app.services import venta_service
 from app.ui import theme
+from app.ui.autocomplete import AutocompleteBuscador
 from app.ui.dialogs.base import ModalBase
-from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
 
 
 def _money(v) -> str:
@@ -29,7 +29,6 @@ class ConsultaPrecioDialog(ModalBase):
                                   font=theme.fuente(16), corner_radius=10,
                                   placeholder_text="Código o nombre…")
         self.entry.pack(padx=20, pady=(0, 12))
-        self.entry.bind("<Return>", self._consultar)
 
         self.card = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=12,
                                  height=128)
@@ -53,27 +52,28 @@ class ConsultaPrecioDialog(ModalBase):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._cancelar).pack(pady=(0, 18))
 
+        self._auto = AutocompleteBuscador(
+            self.entry, self, on_seleccionar=self._seleccionar,
+            on_enter_directo=self._enter_directo)
         self.after(60, self.entry.focus_set)
 
-    def _consultar(self, _event=None) -> None:
-        texto = self.entry.get().strip()
+    def _seleccionar(self, prod) -> None:
         self.entry.delete(0, "end")
+        self._mostrar(prod)
+        self.entry.focus_set()
+
+    def _enter_directo(self) -> None:
+        texto = self.entry.get().strip()
         if not texto:
             return
         prod = venta_service.buscar_por_codigo(texto)
-        if prod is None:
-            resultados = venta_service.buscar_por_nombre(texto)
-            if not resultados:
-                self.lbl_nombre.configure(text="No encontrado")
-                self.lbl_precio.configure(text="")
-                self.lbl_info.configure(text=f"Sin coincidencias para “{texto}”.")
-                self.entry.focus_set()
-                return
-            prod = BuscarProductoDialog(self, resultados).mostrar()
-            if prod is None:
-                self.entry.focus_set()
-                return
-        self._mostrar(prod)
+        if prod is not None:
+            self.entry.delete(0, "end")
+            self._mostrar(prod)
+        else:
+            self.lbl_nombre.configure(text="No encontrado")
+            self.lbl_precio.configure(text="")
+            self.lbl_info.configure(text=f"Sin coincidencias para “{texto}”.")
         self.entry.focus_set()
 
     def _mostrar(self, p) -> None:

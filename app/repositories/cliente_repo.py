@@ -47,3 +47,32 @@ def marcar_sincronizado(conn: sqlite3.Connection, cliente_id: str) -> None:
     conn.execute(
         "UPDATE clientes SET sincronizado = 1 WHERE id = ?", (cliente_id,)
     )
+
+
+def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
+    """Baja un cliente de Neon. Conserva el saldo_cuenta local (lo mueven los
+    fiados de esta PC); para uno nuevo, lo trae completo. No pisa si hay cambios
+    locales sin subir."""
+    actual = conn.execute(
+        "SELECT sincronizado FROM clientes WHERE id = ?", (fila["id"],)
+    ).fetchone()
+    if actual is not None and actual["sincronizado"] == 0:
+        return
+    updated = (fila["updated_at"].isoformat()
+               if hasattr(fila["updated_at"], "isoformat") else str(fila["updated_at"]))
+    if actual is not None:
+        conn.execute(
+            "UPDATE clientes SET nombre = ?, telefono = ?, limite_credito = ?, "
+            "activo = ?, sincronizado = 1, updated_at = ? WHERE id = ?",
+            (fila["nombre"], fila["telefono"], str(fila["limite_credito"]),
+             1 if fila["activo"] else 0, updated, fila["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO clientes (id, nombre, telefono, limite_credito, "
+            "saldo_cuenta, activo, sincronizado, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (fila["id"], fila["nombre"], fila["telefono"],
+             str(fila["limite_credito"]), str(fila["saldo_cuenta"]),
+             1 if fila["activo"] else 0, updated),
+        )

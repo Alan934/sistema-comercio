@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS cuenta_movimientos (
     referencia_tipo   TEXT,
     referencia_id     TEXT,
     nota              TEXT,
+    metodo            TEXT,
     created_at        TIMESTAMPTZ NOT NULL
 );
 
@@ -131,7 +132,41 @@ CREATE TABLE IF NOT EXISTS gastos (
     descripcion   TEXT NOT NULL,
     monto         NUMERIC(12,2) NOT NULL,
     proveedor_id  TEXT,
+    metodo        TEXT NOT NULL DEFAULT 'EFECTIVO',
     created_at    TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cierres_caja (
+    id                   TEXT PRIMARY KEY,
+    fecha                TIMESTAMPTZ NOT NULL,
+    desde                TIMESTAMPTZ,
+    usuario_id           TEXT,
+    usuario_nombre       TEXT,
+    ventas_cantidad      INTEGER NOT NULL DEFAULT 0,
+    total_vendido        NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_ventas      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    transferencia_ventas NUMERIC(12,2) NOT NULL DEFAULT 0,
+    tarjeta_ventas       NUMERIC(12,2) NOT NULL DEFAULT 0,
+    fiado_ventas         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    cobros_efectivo      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    pagos_efectivo       NUMERIC(12,2) NOT NULL DEFAULT 0,
+    gastos_total         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    fondo                NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_esperado    NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_contado     NUMERIC(12,2) NOT NULL DEFAULT 0,
+    diferencia           NUMERIC(12,2) NOT NULL DEFAULT 0,
+    nota                 TEXT,
+    created_at           TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id            TEXT PRIMARY KEY,
+    username      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    rol           TEXT NOT NULL,
+    activo        BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at    TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_cloud_ventas_fecha ON ventas(fecha);

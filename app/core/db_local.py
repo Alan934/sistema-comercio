@@ -30,8 +30,15 @@ def _migrar(conn: sqlite3.Connection) -> None:
         "clientes": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
         "proveedores": [("sincronizado", "INTEGER NOT NULL DEFAULT 0"),
                         ("email", "TEXT")],
-        "categorias": [("margen_pct", "NUMERIC(6,2)")],
-        "productos": [("margen_pct", "NUMERIC(6,2)"), ("ubicacion", "TEXT")],
+        "categorias": [("margen_pct", "NUMERIC(6,2)"),
+                       ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "productos": [("margen_pct", "NUMERIC(6,2)"), ("ubicacion", "TEXT"),
+                      ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "cuenta_movimientos": [("metodo", "TEXT")],
+        "gastos": [("metodo", "TEXT NOT NULL DEFAULT 'EFECTIVO'")],
+        "cierres_caja": [
+            ("cobros_efectivo", "NUMERIC(12,2) NOT NULL DEFAULT 0"),
+            ("pagos_efectivo", "NUMERIC(12,2) NOT NULL DEFAULT 0")],
     }
     for tabla, columnas in nuevas_columnas.items():
         existentes = {row["name"]

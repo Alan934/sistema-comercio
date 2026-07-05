@@ -10,11 +10,12 @@
 
 -- ---------- Catálogo y stock ------------------------------------------------
 CREATE TABLE IF NOT EXISTS categorias (
-    id          TEXT PRIMARY KEY,
-    nombre      TEXT NOT NULL,
-    margen_pct  NUMERIC(6,2),                 -- margen de ganancia por defecto (%)
-    activo      INTEGER NOT NULL DEFAULT 1,
-    updated_at  TEXT NOT NULL
+    id           TEXT PRIMARY KEY,
+    nombre       TEXT NOT NULL,
+    margen_pct   NUMERIC(6,2),                 -- margen de ganancia por defecto (%)
+    activo       INTEGER NOT NULL DEFAULT 1,
+    sincronizado INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS productos (
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS productos (
     controla_stock       INTEGER NOT NULL DEFAULT 1,
     controla_vencimiento INTEGER NOT NULL DEFAULT 0,
     activo               INTEGER NOT NULL DEFAULT 1,
+    sincronizado         INTEGER NOT NULL DEFAULT 0,
     updated_at           TEXT NOT NULL
 );
 
@@ -133,11 +135,49 @@ CREATE TABLE IF NOT EXISTS cuenta_movimientos (
     tipo              TEXT NOT NULL,        -- DEBE (deuda) | HABER (pago)
     monto             NUMERIC(12,2) NOT NULL,
     saldo_resultante  NUMERIC(12,2) NOT NULL,
-    referencia_tipo   TEXT,                 -- VENTA | COMPRA | PAGO
+    referencia_tipo   TEXT,                 -- VENTA | COMPRA | PAGO | AJUSTE
     referencia_id     TEXT,
     nota              TEXT,
+    metodo            TEXT,                 -- medio de pago (solo en PAGO): EFECTIVO/...
     sincronizado      INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL
+);
+
+-- ---------- Cierres de caja (arqueo) ----------------------------------------
+CREATE TABLE IF NOT EXISTS cierres_caja (
+    id                   TEXT PRIMARY KEY,
+    fecha                TEXT NOT NULL,          -- cuándo se hizo el cierre (local)
+    desde                TEXT,                   -- inicio del período (cierre anterior)
+    usuario_id           TEXT,
+    usuario_nombre       TEXT,
+    ventas_cantidad      INTEGER NOT NULL DEFAULT 0,
+    total_vendido        NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_ventas      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    transferencia_ventas NUMERIC(12,2) NOT NULL DEFAULT 0,
+    tarjeta_ventas       NUMERIC(12,2) NOT NULL DEFAULT 0,
+    fiado_ventas         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    cobros_efectivo      NUMERIC(12,2) NOT NULL DEFAULT 0,  -- cobros de fiado en efectivo
+    pagos_efectivo       NUMERIC(12,2) NOT NULL DEFAULT 0,  -- pagos a proveedores en efectivo
+    gastos_total         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    fondo                NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_esperado    NUMERIC(12,2) NOT NULL DEFAULT 0,
+    efectivo_contado     NUMERIC(12,2) NOT NULL DEFAULT 0,
+    diferencia           NUMERIC(12,2) NOT NULL DEFAULT 0,
+    nota                 TEXT,
+    sincronizado         INTEGER NOT NULL DEFAULT 0,
+    created_at           TEXT NOT NULL
+);
+
+-- ---------- Usuarios --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS usuarios (
+    id            TEXT PRIMARY KEY,
+    username      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    rol           TEXT NOT NULL,               -- ADMIN | EMPLEADO
+    activo        INTEGER NOT NULL DEFAULT 1,
+    sincronizado  INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL
 );
 
 -- ---------- Gastos ----------------------------------------------------------
@@ -148,6 +188,7 @@ CREATE TABLE IF NOT EXISTS gastos (
     descripcion   TEXT NOT NULL,
     monto         NUMERIC(12,2) NOT NULL,
     proveedor_id  TEXT REFERENCES proveedores(id),
+    metodo        TEXT NOT NULL DEFAULT 'EFECTIVO',   -- medio de pago del gasto
     sincronizado  INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );

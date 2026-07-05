@@ -51,9 +51,12 @@ def ajustar_saldo(cliente_id: str, nuevo_saldo: Decimal) -> None:
         conn.close()
 
 
-def registrar_pago(cliente_id: str, monto: Decimal,
+def registrar_pago(cliente_id: str, monto: Decimal, metodo: str = "EFECTIVO",
                    nota: str | None = None) -> None:
-    """Registra un pago del cliente: baja lo que nos debe (HABER)."""
+    """Registra un pago del cliente: baja lo que nos debe (HABER).
+
+    `metodo` (EFECTIVO/TRANSFERENCIA/TARJETA) permite que el arqueo cuente
+    la plata que realmente entró a la caja."""
     if monto <= 0:
         raise ClienteError("El monto del pago debe ser mayor a cero.")
     conn = db_local.connect()
@@ -62,7 +65,8 @@ def registrar_pago(cliente_id: str, monto: Decimal,
             cuenta_repo.registrar_movimiento(
                 conn, entidad_tipo="CLIENTE", entidad_id=cliente_id,
                 tipo=cuenta_repo.HABER, monto=monto,
-                referencia_tipo="PAGO", nota=nota or "Pago de cuenta")
+                referencia_tipo="PAGO", nota=nota or "Pago de cuenta",
+                metodo=metodo)
     finally:
         conn.close()
 

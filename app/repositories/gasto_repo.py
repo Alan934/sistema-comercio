@@ -9,10 +9,11 @@ from app.models.gasto import Gasto
 def crear(conn: sqlite3.Connection, gasto: Gasto) -> None:
     conn.execute(
         """INSERT INTO gastos
-           (id, fecha, tipo, descripcion, monto, proveedor_id, sincronizado, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 0, ?)""",
+           (id, fecha, tipo, descripcion, monto, proveedor_id, metodo,
+            sincronizado, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
         (gasto.id, gasto.fecha, gasto.tipo, gasto.descripcion,
-         str(gasto.monto), gasto.proveedor_id, ahora_iso()),
+         str(gasto.monto), gasto.proveedor_id, gasto.metodo, ahora_iso()),
     )
 
 

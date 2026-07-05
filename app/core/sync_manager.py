@@ -19,7 +19,8 @@ from decimal import Decimal
 from app.core import db_local, db_cloud, network
 from app.repositories import (producto_repo, venta_repo, compra_repo,
                              cuenta_repo, gasto_repo, cliente_repo,
-                             proveedor_repo)
+                             proveedor_repo, categoria_repo, usuario_repo,
+                             cierre_repo)
 from config import settings
 
 try:
@@ -38,32 +39,22 @@ def _dt(x):
     return datetime.fromisoformat(x) if x else None
 
 
+def _num_null(x):
+    return Decimal(str(x)) if x is not None else None
+
+
 # --- PULL: nube -> local ----------------------------------------------------
 
 def _pull_catalogo(local, cloud) -> int:
-    """Baja categorías y productos. Devuelve cuántos productos se aplicaron."""
+    """Baja TODO el catálogo y contactos de Neon: categorías, productos,
+    clientes y proveedores. Es lo que pobla una PC nueva o restaurada.
+    Devuelve cuántos registros se aplicaron."""
     aplicados = 0
     with cloud.cursor(row_factory=dict_row) as cur:
         cur.execute("SELECT id, nombre, margen_pct, activo, updated_at FROM categorias")
         for cat in cur.fetchall():
-            margen = str(cat["margen_pct"]) if cat["margen_pct"] is not None else None
-            existe = local.execute(
-                "SELECT 1 FROM categorias WHERE id = ?", (cat["id"],)
-            ).fetchone()
-            if existe:
-                local.execute(
-                    "UPDATE categorias SET nombre=?, margen_pct=?, activo=?, "
-                    "updated_at=? WHERE id=?",
-                    (cat["nombre"], margen, 1 if cat["activo"] else 0,
-                     cat["updated_at"].isoformat(), cat["id"]),
-                )
-            else:
-                local.execute(
-                    "INSERT INTO categorias (id, nombre, margen_pct, activo, "
-                    "updated_at) VALUES (?,?,?,?,?)",
-                    (cat["id"], cat["nombre"], margen, 1 if cat["activo"] else 0,
-                     cat["updated_at"].isoformat()),
-                )
+            categoria_repo.sincronizar_desde_nube(local, cat)
+            aplicados += 1
 
         cur.execute(
             """SELECT id, codigo_barra, nombre, categoria_id, es_pesable,
@@ -76,11 +67,121 @@ def _pull_catalogo(local, cloud) -> int:
             producto_repo.sincronizar_desde_nube(local, prod)
             aplicados += 1
 
+        cur.execute("SELECT id, nombre, telefono, limite_credito, saldo_cuenta, "
+                    "activo, updated_at FROM clientes")
+        for cli in cur.fetchall():
+            cliente_repo.sincronizar_desde_nube(local, cli)
+            aplicados += 1
+
+        cur.execute("SELECT id, nombre, cuit, telefono, email, saldo_cuenta, "
+                    "activo, updated_at FROM proveedores")
+        for pr in cur.fetchall():
+            proveedor_repo.sincronizar_desde_nube(local, pr)
+            aplicados += 1
+
+        cur.execute("SELECT id, username, password_hash, salt, rol, activo, "
+                    "updated_at FROM usuarios")
+        for u in cur.fetchall():
+            usuario_repo.sincronizar_desde_nube(local, u)
+            aplicados += 1
+
+        cur.execute("SELECT * FROM cierres_caja")
+        for cierre in cur.fetchall():
+            cierre_repo.sincronizar_desde_nube(local, cierre)
+            aplicados += 1
+
     local.commit()
     return aplicados
 
 
 # --- PUSH: local -> nube ----------------------------------------------------
+
+def _push_categorias(local, cloud) -> int:
+    pendientes = categoria_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for c in pendientes:
+                cur.execute(
+                    """INSERT INTO categorias (id, nombre, margen_pct, activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         nombre = EXCLUDED.nombre, margen_pct = EXCLUDED.margen_pct,
+                         activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
+                    (c["id"], c["nombre"], _num_null(c["margen_pct"]),
+                     bool(c["activo"]), _dt(c["updated_at"])),
+                )
+    for c in pendientes:
+        categoria_repo.marcar_sincronizado(local, c["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_productos(local, cloud) -> int:
+    pendientes = producto_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for p in pendientes:
+                cur.execute(
+                    """INSERT INTO productos
+                         (id, codigo_barra, nombre, categoria_id, es_pesable,
+                          unidad_medida, costo_compra, precio_venta, margen_pct,
+                          ubicacion, stock_actual, stock_minimo, controla_stock,
+                          controla_vencimiento, activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         codigo_barra = EXCLUDED.codigo_barra, nombre = EXCLUDED.nombre,
+                         categoria_id = EXCLUDED.categoria_id,
+                         es_pesable = EXCLUDED.es_pesable,
+                         unidad_medida = EXCLUDED.unidad_medida,
+                         costo_compra = EXCLUDED.costo_compra,
+                         precio_venta = EXCLUDED.precio_venta,
+                         margen_pct = EXCLUDED.margen_pct, ubicacion = EXCLUDED.ubicacion,
+                         stock_actual = EXCLUDED.stock_actual,
+                         stock_minimo = EXCLUDED.stock_minimo,
+                         controla_stock = EXCLUDED.controla_stock,
+                         controla_vencimiento = EXCLUDED.controla_vencimiento,
+                         activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
+                    (p["id"], p["codigo_barra"], p["nombre"], p["categoria_id"],
+                     bool(p["es_pesable"]), p["unidad_medida"], _num(p["costo_compra"]),
+                     _num(p["precio_venta"]), _num_null(p["margen_pct"]), p["ubicacion"],
+                     _num(p["stock_actual"]), _num(p["stock_minimo"]),
+                     bool(p["controla_stock"]), bool(p["controla_vencimiento"]),
+                     bool(p["activo"]), _dt(p["updated_at"])),
+                )
+    for p in pendientes:
+        producto_repo.marcar_sincronizado(local, p["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_usuarios(local, cloud) -> int:
+    pendientes = usuario_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for u in pendientes:
+                cur.execute(
+                    """INSERT INTO usuarios
+                         (id, username, password_hash, salt, rol, activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         username = EXCLUDED.username,
+                         password_hash = EXCLUDED.password_hash,
+                         salt = EXCLUDED.salt, rol = EXCLUDED.rol,
+                         activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
+                    (u["id"], u["username"], u["password_hash"], u["salt"],
+                     u["rol"], bool(u["activo"]), _dt(u["updated_at"])),
+                )
+    for u in pendientes:
+        usuario_repo.marcar_sincronizado(local, u["id"])
+    local.commit()
+    return len(pendientes)
+
 
 def _push_catalogo(local, cloud) -> int:
     """Sube clientes y proveedores (con su saldo) usando upsert, así la nube
@@ -222,16 +323,49 @@ def _push_cuenta(local, cloud) -> int:
                     """INSERT INTO cuenta_movimientos
                          (id, entidad_tipo, entidad_id, fecha, tipo, monto,
                           saldo_resultante, referencia_tipo, referencia_id,
-                          nota, created_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                          nota, metodo, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO NOTHING""",
                     (m["id"], m["entidad_tipo"], m["entidad_id"], _dt(m["fecha"]),
                      m["tipo"], _num(m["monto"]), _num(m["saldo_resultante"]),
                      m["referencia_tipo"], m["referencia_id"], m["nota"],
-                     _dt(m["created_at"])),
+                     m["metodo"], _dt(m["created_at"])),
                 )
     for m in pendientes:
         cuenta_repo.marcar_sincronizado(local, m["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_cierres(local, cloud) -> int:
+    pendientes = cierre_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for c in pendientes:
+                cur.execute(
+                    """INSERT INTO cierres_caja
+                         (id, fecha, desde, usuario_id, usuario_nombre,
+                          ventas_cantidad, total_vendido, efectivo_ventas,
+                          transferencia_ventas, tarjeta_ventas, fiado_ventas,
+                          cobros_efectivo, pagos_efectivo, gastos_total, fondo,
+                          efectivo_esperado, efectivo_contado, diferencia, nota,
+                          created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO NOTHING""",
+                    (c["id"], _dt(c["fecha"]), _dt(c["desde"]), c["usuario_id"],
+                     c["usuario_nombre"], c["ventas_cantidad"],
+                     _num(c["total_vendido"]), _num(c["efectivo_ventas"]),
+                     _num(c["transferencia_ventas"]), _num(c["tarjeta_ventas"]),
+                     _num(c["fiado_ventas"]), _num(c["cobros_efectivo"]),
+                     _num(c["pagos_efectivo"]), _num(c["gastos_total"]),
+                     _num(c["fondo"]), _num(c["efectivo_esperado"]),
+                     _num(c["efectivo_contado"]), _num(c["diferencia"]),
+                     c["nota"], _dt(c["created_at"])),
+                )
+    for c in pendientes:
+        cierre_repo.marcar_sincronizado(local, c["id"])
     local.commit()
     return len(pendientes)
 
@@ -246,11 +380,13 @@ def _push_gastos(local, cloud) -> int:
             for g in pendientes:
                 cur.execute(
                     """INSERT INTO gastos
-                         (id, fecha, tipo, descripcion, monto, proveedor_id, created_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                         (id, fecha, tipo, descripcion, monto, proveedor_id,
+                          metodo, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO NOTHING""",
                     (g["id"], _dt(g["fecha"]), g["tipo"], g["descripcion"],
-                     _num(g["monto"]), g["proveedor_id"], _dt(g["created_at"])),
+                     _num(g["monto"]), g["proveedor_id"], g["metodo"],
+                     _dt(g["created_at"])),
                 )
     for g in pendientes:
         gasto_repo.marcar_sincronizado(local, g["id"])
@@ -278,19 +414,29 @@ def sincronizar_ahora() -> dict:
 
     try:
         db_cloud.asegurar_schema(cloud)
-        productos = _pull_catalogo(local, cloud)
-        catalogo = _push_catalogo(local, cloud)
+        # SUBIR todo lo pendiente (catálogo completo + transacciones).
+        cat = _push_categorias(local, cloud)
+        prod = _push_productos(local, cloud)
+        usuarios = _push_usuarios(local, cloud)
+        contactos = _push_catalogo(local, cloud)
         ventas = _push_ventas(local, cloud)
         compras = _push_compras(local, cloud)
         movimientos = _push_cuenta(local, cloud)
         gastos = _push_gastos(local, cloud)
+        cierres = _push_cierres(local, cloud)
+        # BAJAR todo lo que falte (pobla una PC nueva o restaurada).
+        bajados = _pull_catalogo(local, cloud)
         return {"ok": True,
-                "productos_actualizados": productos,
-                "catalogo_subido": catalogo,
+                "categorias_subidas": cat,
+                "productos_subidos": prod,
+                "usuarios_subidos": usuarios,
+                "contactos_subidos": contactos,
                 "ventas_subidas": ventas,
                 "compras_subidas": compras,
                 "movimientos_subidos": movimientos,
-                "gastos_subidos": gastos}
+                "gastos_subidos": gastos,
+                "cierres_subidos": cierres,
+                "bajados_de_nube": bajados}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"error durante la sync: {e}"}
     finally:

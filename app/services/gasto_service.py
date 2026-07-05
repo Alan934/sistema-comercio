@@ -13,7 +13,7 @@ class GastoError(Exception):
 
 def crear_gasto(tipo: str, descripcion: str, monto: Decimal,
                 proveedor_id: str | None = None,
-                fecha: str | None = None) -> str:
+                fecha: str | None = None, metodo: str = "EFECTIVO") -> str:
     descripcion = (descripcion or "").strip()
     if tipo not in TIPOS:
         raise GastoError("El tipo debe ser FIJO o VARIABLE.")
@@ -24,7 +24,8 @@ def crear_gasto(tipo: str, descripcion: str, monto: Decimal,
 
     gasto = Gasto(
         id=nuevo_id(), fecha=fecha or ahora_local(), tipo=tipo,
-        descripcion=descripcion, monto=monto, proveedor_id=proveedor_id)
+        descripcion=descripcion, monto=monto, proveedor_id=proveedor_id,
+        metodo=metodo)
     conn = db_local.connect()
     try:
         with conn:

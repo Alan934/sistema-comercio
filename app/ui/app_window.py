@@ -12,19 +12,24 @@ from config import settings
 from app.core.sync_manager import SyncManager
 from app.core import updater
 from app.ui import theme
+from app.models.usuario import SECCIONES_POR_ROL
 from app.ui.views.ventas_view import VentasView
 from app.ui.views.stock_view import StockView
 from app.ui.views.proveedores_view import ProveedoresView
 from app.ui.views.clientes_view import ClientesView
 from app.ui.views.reportes_view import ReportesView
+from app.ui.views.cierres_view import CierresView
+from app.ui.views.usuarios_view import UsuariosView
 
 ctk.set_appearance_mode(theme.cargar_apariencia())
 ctk.set_default_color_theme("green")   # armoniza los botones por defecto con el teal
 
 
 class AppWindow(ctk.CTk):
-    def __init__(self):
+    def __init__(self, usuario):
         super().__init__()
+        self.usuario = usuario
+        self.cerrar_sesion = False
         self.title(f"{settings.APP_NOMBRE} v{settings.APP_VERSION}")
         self.minsize(900, 600)
         self._centrar_ventana(1180, 740)
@@ -51,31 +56,37 @@ class AppWindow(ctk.CTk):
         contenido.grid_rowconfigure(0, weight=1)
         contenido.grid_columnconfigure(0, weight=1)
 
-        self._vistas = {
-            "caja": VentasView(contenido),
-            "stock": StockView(contenido),
-            "proveedores": ProveedoresView(contenido),
-            "clientes": ClientesView(contenido),
-            "reportes": ReportesView(contenido),
+        # --- Vistas y navegación según el ROL del usuario ---
+        constructores = {
+            "caja": lambda: VentasView(contenido),
+            "stock": lambda: StockView(contenido),
+            "proveedores": lambda: ProveedoresView(contenido),
+            "clientes": lambda: ClientesView(contenido),
+            "reportes": lambda: ReportesView(contenido),
+            "cierres": lambda: CierresView(contenido, self.usuario),
+            "usuarios": lambda: UsuariosView(contenido, self.usuario),
         }
-        for vista in self._vistas.values():
-            vista.grid(row=0, column=0, sticky="nsew")
+        etiquetas = {"caja": "Caja", "stock": "Stock",
+                     "proveedores": "Proveedores", "clientes": "Clientes",
+                     "reportes": "Reportes", "cierres": "Cierre de caja",
+                     "usuarios": "Usuarios"}
+        secciones = SECCIONES_POR_ROL.get(usuario.rol, ["caja"])
 
-        # --- Botones de navegación ---
+        self._vistas = {}
         self._botones = {}
-        for clave, texto in [("caja", "Caja"), ("stock", "Stock"),
-                             ("proveedores", "Proveedores"),
-                             ("clientes", "Clientes"),
-                             ("reportes", "Reportes")]:
+        for clave in secciones:
+            vista = constructores[clave]()
+            vista.grid(row=0, column=0, sticky="nsew")
+            self._vistas[clave] = vista
             btn = ctk.CTkButton(
-                side, text=texto, anchor="w", height=42, corner_radius=8,
-                font=theme.fuente(14), fg_color="transparent",
+                side, text=etiquetas[clave], anchor="w", height=42,
+                corner_radius=8, font=theme.fuente(14), fg_color="transparent",
                 text_color=theme.NAV_TXT_INACT, hover_color=theme.NAV_HOVER,
                 command=lambda k=clave: self.mostrar(k))
             btn.pack(fill="x", padx=12, pady=3)
             self._botones[clave] = btn
 
-        # --- Pie: tema, versión y actualización ---
+        # --- Pie: usuario, cerrar sesión, tema, versión y actualización ---
         self.btn_update = ctk.CTkButton(
             side, text="Buscar actualización", height=34, corner_radius=8,
             font=theme.fuente(13), fg_color="transparent",
@@ -93,7 +104,19 @@ class AppWindow(ctk.CTk):
             hover_color=theme.NAV_HOVER, command=self._toggle_tema)
         self.btn_tema.pack(side="bottom", fill="x", padx=12, pady=(4, 2))
 
-        self.mostrar("caja")
+        # Usuario actual + cerrar sesión (arriba del cluster inferior).
+        ctk.CTkButton(
+            side, text="Cerrar sesión", height=34, corner_radius=8,
+            font=theme.fuente(13), fg_color="transparent",
+            text_color=theme.NAV_TXT_INACT, hover_color=theme.NAV_HOVER,
+            command=self._cerrar_sesion).pack(side="bottom", fill="x",
+                                              padx=12, pady=(4, 2))
+        rol_txt = "Administrador" if usuario.es_admin else "Empleado"
+        ctk.CTkLabel(side, text=f"{usuario.username}  ·  {rol_txt}",
+                     text_color=theme.NAV_TXT, font=theme.fuente(12)).pack(
+            side="bottom", pady=(10, 2))
+
+        self.mostrar(secciones[0])
 
         # --- Sincronización en segundo plano ---
         self.sync = SyncManager()
@@ -169,6 +192,11 @@ class AppWindow(ctk.CTk):
             self.btn_update.configure(text="Buscar actualización")
             messagebox.showerror("Error al actualizar", str(e))
             return
+        self.sync.stop()
+        self.destroy()
+
+    def _cerrar_sesion(self) -> None:
+        self.cerrar_sesion = True
         self.sync.stop()
         self.destroy()
 

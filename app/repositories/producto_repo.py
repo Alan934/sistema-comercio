@@ -93,7 +93,7 @@ def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
              ubicacion = :ubicacion, stock_minimo = :stock_minimo,
              controla_stock = :controla_stock,
              controla_vencimiento = :controla_vencimiento,
-             activo = :activo, updated_at = :updated_at
+             activo = :activo, sincronizado = 0, updated_at = :updated_at
            WHERE id = :id""",
         datos,
     )
@@ -108,7 +108,8 @@ def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad) -> None
         raise ValueError(f"Producto inexistente: {producto_id}")
     nuevo = Decimal(str(row["stock_actual"])) + cantidad
     conn.execute(
-        "UPDATE productos SET stock_actual = ?, updated_at = ? WHERE id = ?",
+        "UPDATE productos SET stock_actual = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (str(nuevo), ahora_iso(), producto_id),
     )
 
@@ -116,7 +117,8 @@ def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad) -> None
 def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
     """Actualiza el costo de compra con el del último remito recibido."""
     conn.execute(
-        "UPDATE productos SET costo_compra = ?, updated_at = ? WHERE id = ?",
+        "UPDATE productos SET costo_compra = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (str(costo), ahora_iso(), producto_id),
     )
 
@@ -153,7 +155,8 @@ def recalcular_precio(conn: sqlite3.Connection, producto_id: str) -> None:
         return
     precio = pricing.precio_desde_margen(row["costo"], margen)
     conn.execute(
-        "UPDATE productos SET precio_venta = ?, updated_at = ? WHERE id = ?",
+        "UPDATE productos SET precio_venta = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (str(precio), ahora_iso(), producto_id),
     )
 
@@ -181,7 +184,8 @@ def descontar_stock(conn: sqlite3.Connection, producto_id: str,
         raise ValueError(f"Producto inexistente: {producto_id}")
     nuevo_stock = Decimal(str(row["stock_actual"])) - cantidad
     conn.execute(
-        "UPDATE productos SET stock_actual = ?, updated_at = ? WHERE id = ?",
+        "UPDATE productos SET stock_actual = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (str(nuevo_stock), ahora_iso(), producto_id),
     )
 
@@ -208,23 +212,41 @@ def _txt_null(v):
     return str(v) if v is not None else None
 
 
+def obtener_pendientes_sync(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM productos WHERE sincronizado = 0"
+    ).fetchall()
+
+
+def marcar_sincronizado(conn: sqlite3.Connection, producto_id: str) -> None:
+    conn.execute(
+        "UPDATE productos SET sincronizado = 1 WHERE id = ?", (producto_id,)
+    )
+
+
 def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
     """Aplica un producto traído de Neon.
 
-    Si ya existe localmente, actualiza SOLO catálogo y precios: NUNCA toca
-    stock_actual, porque el stock es autoritativo en el local (lo descuentan
-    las ventas). Si es nuevo, lo inserta completo (incluido su stock inicial)."""
-    existe = conn.execute(
-        "SELECT 1 FROM productos WHERE id = ?", (fila["id"],)
+    - Si el producto local tiene cambios pendientes de subir (sincronizado=0),
+      NO se pisa: gana lo local hasta que suba (evita perder ediciones).
+    - Si ya existe y está sincronizado, actualiza el catálogo PERO conserva el
+      stock_actual local (lo descuentan las ventas de esta PC).
+    - Si es nuevo (PC nueva / restaurada), se inserta completo, incluido el
+      stock que viene de la nube. Queda marcado como sincronizado."""
+    actual = conn.execute(
+        "SELECT sincronizado FROM productos WHERE id = ?", (fila["id"],)
     ).fetchone()
 
-    if existe:
+    if actual is not None and actual["sincronizado"] == 0:
+        return  # cambios locales sin subir: no pisar
+
+    if actual is not None:
         conn.execute(
             """UPDATE productos SET
                  codigo_barra = ?, nombre = ?, categoria_id = ?, es_pesable = ?,
                  unidad_medida = ?, precio_venta = ?, costo_compra = ?,
                  margen_pct = ?, ubicacion = ?, stock_minimo = ?, controla_stock = ?,
-                 controla_vencimiento = ?, activo = ?, updated_at = ?
+                 controla_vencimiento = ?, activo = ?, sincronizado = 1, updated_at = ?
                WHERE id = ?""",
             (fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
@@ -239,8 +261,9 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
             """INSERT INTO productos
                  (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
                   precio_venta, costo_compra, margen_pct, ubicacion, stock_actual,
-                  stock_minimo, controla_stock, controla_vencimiento, activo, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  stock_minimo, controla_stock, controla_vencimiento, activo,
+                  sincronizado, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
             (fila["id"], fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),

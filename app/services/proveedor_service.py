@@ -61,9 +61,12 @@ def ajustar_saldo(proveedor_id: str, nuevo_saldo: Decimal) -> None:
         conn.close()
 
 
-def registrar_pago(proveedor_id: str, monto: Decimal,
+def registrar_pago(proveedor_id: str, monto: Decimal, metodo: str = "EFECTIVO",
                    nota: str | None = None) -> None:
-    """Registra un pago a un proveedor: baja lo que le debemos (HABER)."""
+    """Registra un pago a un proveedor: baja lo que le debemos (HABER).
+
+    `metodo` (EFECTIVO/TRANSFERENCIA/TARJETA) permite que el arqueo descuente
+    de la caja solo lo que se pagó en efectivo."""
     if monto <= 0:
         raise ProveedorError("El monto del pago debe ser mayor a cero.")
     conn = db_local.connect()
@@ -72,6 +75,7 @@ def registrar_pago(proveedor_id: str, monto: Decimal,
             cuenta_repo.registrar_movimiento(
                 conn, entidad_tipo="PROVEEDOR", entidad_id=proveedor_id,
                 tipo=cuenta_repo.HABER, monto=monto,
-                referencia_tipo="PAGO", nota=nota or "Pago a proveedor")
+                referencia_tipo="PAGO", nota=nota or "Pago a proveedor",
+                metodo=metodo)
     finally:
         conn.close()

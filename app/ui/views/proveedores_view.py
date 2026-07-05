@@ -7,7 +7,7 @@ import customtkinter as ctk
 
 from app.services import proveedor_service
 from app.ui import theme
-from app.ui.dialogs.proveedor_dialog import ProveedorDialog, MontoDialog
+from app.ui.dialogs.proveedor_dialog import ProveedorDialog, PagoDialog
 from app.ui.dialogs.ajuste_saldo_dialog import AjusteSaldoDialog
 
 
@@ -107,10 +107,11 @@ class ProveedoresView(ctk.CTkFrame):
         self._recargar()
 
     def _pagar(self, proveedor_id: str, nombre: str, saldo) -> None:
-        monto = MontoDialog(self, "Registrar pago",
-                            f"Pago a {nombre}:").mostrar()
-        if monto is None:
+        datos = PagoDialog(self, "Registrar pago",
+                           f"Pago a {nombre}:").mostrar()
+        if datos is None:
             return
+        monto, metodo = datos["monto"], datos["metodo"]
         if monto > saldo:
             if saldo > 0:
                 msg = (f"Le debés {_money(saldo)} y vas a registrar un pago de "
@@ -122,7 +123,7 @@ class ProveedoresView(ctk.CTkFrame):
             if not messagebox.askyesno("Pago mayor a la deuda", msg):
                 return
         try:
-            proveedor_service.registrar_pago(proveedor_id, monto)
+            proveedor_service.registrar_pago(proveedor_id, monto, metodo)
         except proveedor_service.ProveedorError as e:
             messagebox.showerror("No se pudo registrar", str(e))
             return

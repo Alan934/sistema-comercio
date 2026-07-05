@@ -17,9 +17,9 @@ import customtkinter as ctk
 from app.models.carrito import Carrito
 from app.services import venta_service
 from app.ui import theme
+from app.ui.autocomplete import AutocompleteBuscador
 from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
-from app.ui.dialogs.buscar_dialog import BuscarProductoDialog
 from app.ui.dialogs.consulta_precio_dialog import ConsultaPrecioDialog
 from app.ui.dialogs.cantidad_dialog import CantidadDialog
 
@@ -55,11 +55,11 @@ class VentasView(ctk.CTkFrame):
             scanbar, placeholder_text="Escaneá un código o buscá un producto…",
             font=theme.fuente(16), height=48, corner_radius=10)
         self.entry_scan.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.entry_scan.bind("<Return>", self._on_scan)
         ctk.CTkButton(scanbar, text="Buscar", width=110, height=48,
                       corner_radius=10, font=theme.fuente(14),
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
-                      command=self._on_scan).grid(row=0, column=1, padx=(0, 8))
+                      command=lambda: self._auto.enter()).grid(
+            row=0, column=1, padx=(0, 8))
         ctk.CTkButton(scanbar, text="Consultar precio (F2)", width=170,
                       height=48, corner_radius=10, font=theme.fuente(14),
                       fg_color="transparent", text_color=theme.ACCENT,
@@ -84,6 +84,12 @@ class VentasView(ctk.CTkFrame):
                                             corner_radius=12)
         self.tabla.grid(row=2, column=0, sticky="nsew")
         self.tabla.grid_columnconfigure(0, weight=1)
+
+        # Autocompletado: sugiere productos mientras se escribe (↑/↓ + Enter).
+        self._auto = AutocompleteBuscador(
+            self.entry_scan, main,
+            on_seleccionar=self._agregar_desde_busqueda,
+            on_enter_directo=self._enter_directo)
 
         # --- Columna derecha: panel de cobro ---
         panel = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=12)
@@ -124,24 +130,24 @@ class VentasView(ctk.CTkFrame):
 
     # --- Escaneo / agregado -------------------------------------------------
 
-    def _on_scan(self, _event=None) -> None:
-        texto = self.entry_scan.get().strip()
+    def _agregar_desde_busqueda(self, producto) -> None:
+        """Producto elegido del autocompletado."""
         self.entry_scan.delete(0, "end")
+        self._agregar(producto)
+        self.entry_scan.focus_set()
+
+    def _enter_directo(self) -> None:
+        """Enter sin resultado seleccionado: prueba código exacto (la pistolita)."""
+        texto = self.entry_scan.get().strip()
         if not texto:
             return
         prod = venta_service.buscar_por_codigo(texto)
-        if prod is None:
-            resultados = venta_service.buscar_por_nombre(texto)
-            if not resultados:
-                messagebox.showwarning("Sin resultados",
-                                       f"No se encontró '{texto}'.")
-                self.entry_scan.focus_set()
-                return
-            prod = BuscarProductoDialog(self, resultados).mostrar()
-            if prod is None:
-                self.entry_scan.focus_set()
-                return
-        self._agregar(prod)
+        if prod is not None:
+            self.entry_scan.delete(0, "end")
+            self._agregar(prod)
+        else:
+            messagebox.showinfo("Sin resultados",
+                                f"No se encontró un producto con “{texto}”.")
         self.entry_scan.focus_set()
 
     def _consultar_precio(self) -> None:

@@ -30,10 +30,50 @@ def crear(conn: sqlite3.Connection, nombre: str, margen_pct) -> str:
 def actualizar(conn: sqlite3.Connection, categoria_id: str, nombre: str,
                margen_pct) -> None:
     conn.execute(
-        "UPDATE categorias SET nombre = ?, margen_pct = ?, updated_at = ? WHERE id = ?",
+        "UPDATE categorias SET nombre = ?, margen_pct = ?, sincronizado = 0, "
+        "updated_at = ? WHERE id = ?",
         (nombre, str(margen_pct) if margen_pct is not None else None,
          ahora_iso(), categoria_id),
     )
+
+
+# --- Sincronización del catálogo (local <-> nube) --------------------------
+
+def obtener_pendientes_sync(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM categorias WHERE sincronizado = 0"
+    ).fetchall()
+
+
+def marcar_sincronizado(conn: sqlite3.Connection, categoria_id: str) -> None:
+    conn.execute(
+        "UPDATE categorias SET sincronizado = 1 WHERE id = ?", (categoria_id,)
+    )
+
+
+def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
+    """Aplica una categoría traída de Neon, salvo que haya cambios locales sin
+    subir (sincronizado=0), en cuyo caso gana lo local."""
+    actual = conn.execute(
+        "SELECT sincronizado FROM categorias WHERE id = ?", (fila["id"],)
+    ).fetchone()
+    if actual is not None and actual["sincronizado"] == 0:
+        return
+    margen = str(fila["margen_pct"]) if fila["margen_pct"] is not None else None
+    updated = (fila["updated_at"].isoformat()
+               if hasattr(fila["updated_at"], "isoformat") else str(fila["updated_at"]))
+    if actual is not None:
+        conn.execute(
+            "UPDATE categorias SET nombre = ?, margen_pct = ?, activo = ?, "
+            "sincronizado = 1, updated_at = ? WHERE id = ?",
+            (fila["nombre"], margen, 1 if fila["activo"] else 0, updated, fila["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO categorias (id, nombre, margen_pct, activo, sincronizado, "
+            "updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            (fila["id"], fila["nombre"], margen, 1 if fila["activo"] else 0, updated),
+        )
 
 
 def listar_activas(conn: sqlite3.Connection) -> list[Categoria]:

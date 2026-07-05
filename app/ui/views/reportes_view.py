@@ -210,7 +210,7 @@ class ReportesView(ctk.CTkFrame):
         try:
             gasto_service.crear_gasto(
                 datos["tipo"], datos["descripcion"], datos["monto"],
-                proveedor_id=datos["proveedor_id"])
+                proveedor_id=datos["proveedor_id"], metodo=datos["metodo"])
         except gasto_service.GastoError as e:
             messagebox.showerror("No se pudo registrar", str(e))
             return

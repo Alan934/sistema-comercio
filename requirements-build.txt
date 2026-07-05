@@ -1,0 +1,2 @@
+# Dependencias solo para compilar el .exe (no van en la PC del local).
+pyinstaller>=6.0

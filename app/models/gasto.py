@@ -16,3 +16,4 @@ class Gasto:
     descripcion: str
     monto: Decimal
     proveedor_id: str | None = None
+    metodo: str = "EFECTIVO"   # EFECTIVO | TRANSFERENCIA | TARJETA
