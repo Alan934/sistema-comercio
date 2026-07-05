@@ -1,6 +1,6 @@
 """Vista de Reportes + Gastos: período seleccionable, tarjetas de resumen
 (con la ganancia neta destacada), desgloses y alta de gastos."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import customtkinter as ctk
@@ -30,11 +30,27 @@ def _unidades(v) -> str:
     return f"{float(v):g}"
 
 
+def _parse_fecha(texto: str) -> date | None:
+    """Interpreta una fecha escrita a mano. Acepta dd/mm/aaaa (o con -)
+    y el formato ISO aaaa-mm-dd. Devuelve None si no se entiende."""
+    texto = texto.strip()
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(texto, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 class ReportesView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        # Rango personalizado activo (se usa cuando el período es "Personalizado")
+        self._desde_custom: date = date.today().replace(day=1)
+        self._hasta_custom: date = date.today()
 
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 8))
@@ -42,10 +58,10 @@ class ReportesView(ctk.CTkFrame):
         ctk.CTkLabel(top, text="Reportes", font=theme.fuente(24, "bold"),
                      text_color=theme.TXT).grid(row=0, column=0, sticky="w")
         self.seg_periodo = ctk.CTkSegmentedButton(
-            top, values=["Hoy", "Semana", "Mes", "Año"],
+            top, values=["Hoy", "Semana", "Mes", "Año", "Personalizado"],
             font=theme.fuente(13), selected_color=theme.PRIMARY,
             selected_hover_color=theme.PRIMARY_HOVER,
-            command=lambda _v: self._render())
+            command=lambda _v: self._on_periodo())
         self.seg_periodo.set("Mes")
         self.seg_periodo.grid(row=0, column=1, padx=8)
         ctk.CTkButton(top, text="Registrar gasto", width=150, height=40,
@@ -53,8 +69,31 @@ class ReportesView(ctk.CTkFrame):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._registrar_gasto).grid(row=0, column=2, padx=4)
 
+        # Fila de fechas (oculta salvo en "Personalizado")
+        self.fila_fechas = ctk.CTkFrame(self, fg_color=theme.CARD_BG,
+                                        corner_radius=10)
+        ctk.CTkLabel(self.fila_fechas, text="Desde", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).pack(side="left", padx=(14, 4),
+                                                      pady=10)
+        self.ent_desde = ctk.CTkEntry(self.fila_fechas, width=120,
+                                      placeholder_text="dd/mm/aaaa")
+        self.ent_desde.pack(side="left", padx=4, pady=10)
+        ctk.CTkLabel(self.fila_fechas, text="Hasta", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).pack(side="left", padx=(14, 4),
+                                                      pady=10)
+        self.ent_hasta = ctk.CTkEntry(self.fila_fechas, width=120,
+                                      placeholder_text="dd/mm/aaaa")
+        self.ent_hasta.pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(self.fila_fechas, text="Ver reporte", width=120, height=32,
+                      corner_radius=10, font=theme.fuente(13),
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+                      command=self._aplicar_fechas).pack(side="left", padx=(12, 14),
+                                                         pady=10)
+        self.ent_desde.bind("<Return>", lambda _e: self._aplicar_fechas())
+        self.ent_hasta.bind("<Return>", lambda _e: self._aplicar_fechas())
+
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.scroll.grid(row=1, column=0, sticky="nsew", padx=20, pady=(6, 18))
+        self.scroll.grid(row=2, column=0, sticky="nsew", padx=20, pady=(6, 18))
         self.scroll.grid_columnconfigure(0, weight=1)
 
     def al_mostrar(self) -> None:
@@ -71,7 +110,37 @@ class ReportesView(ctk.CTkFrame):
             return hoy - timedelta(days=6), hoy
         if sel == "Año":
             return hoy.replace(month=1, day=1), hoy
+        if sel == "Personalizado":
+            return self._desde_custom, self._hasta_custom
         return hoy.replace(day=1), hoy
+
+    def _on_periodo(self) -> None:
+        """Muestra la fila de fechas solo en 'Personalizado' y redibuja."""
+        if self.seg_periodo.get() == "Personalizado":
+            self.fila_fechas.grid(row=1, column=0, sticky="w", padx=20, pady=(0, 6))
+            # Precarga los campos con el rango vigente si están vacíos.
+            if not self.ent_desde.get():
+                self.ent_desde.insert(0, self._desde_custom.strftime("%d/%m/%Y"))
+            if not self.ent_hasta.get():
+                self.ent_hasta.insert(0, self._hasta_custom.strftime("%d/%m/%Y"))
+        else:
+            self.fila_fechas.grid_remove()
+        self._render()
+
+    def _aplicar_fechas(self) -> None:
+        """Valida las fechas escritas y redibuja el reporte con ese rango."""
+        desde = _parse_fecha(self.ent_desde.get())
+        hasta = _parse_fecha(self.ent_hasta.get())
+        if desde is None or hasta is None:
+            notificar.error(self, "Fecha inválida",
+                            "Escribí las fechas como dd/mm/aaaa.")
+            return
+        if desde > hasta:
+            notificar.error(self, "Rango inválido",
+                            "La fecha 'Desde' no puede ser posterior a 'Hasta'.")
+            return
+        self._desde_custom, self._hasta_custom = desde, hasta
+        self._render()
 
     # --- Render -------------------------------------------------------------
 
