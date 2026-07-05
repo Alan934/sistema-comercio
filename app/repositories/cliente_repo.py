@@ -27,12 +27,61 @@ def crear(conn: sqlite3.Connection, cliente_id: str, nombre: str,
     )
 
 
+def obtener(conn: sqlite3.Connection, cliente_id: str) -> Cliente | None:
+    row = conn.execute(
+        "SELECT id, nombre, telefono, saldo_cuenta, limite_credito "
+        "FROM clientes WHERE id = ?", (cliente_id,)
+    ).fetchone()
+    return _to_cliente(row) if row else None
+
+
 def listar_activos(conn: sqlite3.Connection) -> list[Cliente]:
     rows = conn.execute(
         "SELECT id, nombre, telefono, saldo_cuenta, limite_credito FROM clientes "
         "WHERE activo = 1 ORDER BY nombre"
     ).fetchall()
     return [_to_cliente(r) for r in rows]
+
+
+def buscar_duplicado(conn: sqlite3.Connection, nombre: str,
+                     telefono: str | None = None,
+                     excluir_id: str | None = None) -> Cliente | None:
+    """Busca un cliente activo que colisione por nombre (sin distinguir
+    mayúsculas ni espacios) o, si se provee, por teléfono igual. `excluir_id`
+    deja fuera al propio cliente cuando se está editando."""
+    condiciones = ["LOWER(TRIM(nombre)) = LOWER(TRIM(?))"]
+    params: list[str] = [nombre]
+    if telefono and telefono.strip():
+        condiciones.append("TRIM(telefono) = TRIM(?)")
+        params.append(telefono)
+    sql = ("SELECT id, nombre, telefono, saldo_cuenta, limite_credito "
+           "FROM clientes WHERE activo = 1 AND ("
+           + " OR ".join(condiciones) + ")")
+    if excluir_id:
+        sql += " AND id != ?"
+        params.append(excluir_id)
+    row = conn.execute(sql + " LIMIT 1", params).fetchone()
+    return _to_cliente(row) if row else None
+
+
+def actualizar(conn: sqlite3.Connection, cliente_id: str, nombre: str,
+               telefono: str | None, limite_credito) -> None:
+    """Actualiza los datos del cliente (no toca el saldo). Marca
+    `sincronizado = 0` para que el cambio suba a la nube."""
+    conn.execute(
+        "UPDATE clientes SET nombre = ?, telefono = ?, limite_credito = ?, "
+        "sincronizado = 0, updated_at = ? WHERE id = ?",
+        (nombre, telefono, str(limite_credito), ahora_iso(), cliente_id),
+    )
+
+
+def eliminar(conn: sqlite3.Connection, cliente_id: str) -> None:
+    """Baja lógica: marca el cliente como inactivo (no borra el registro para
+    conservar el historial). Marca `sincronizado = 0` para propagar la baja."""
+    conn.execute(
+        "UPDATE clientes SET activo = 0, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?", (ahora_iso(), cliente_id),
+    )
 
 
 # --- Lectura para sincronización del catálogo (local -> nube) --------------

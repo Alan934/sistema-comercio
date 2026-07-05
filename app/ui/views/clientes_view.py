@@ -26,8 +26,9 @@ def _texto_saldo(saldo):
 
 
 class ClientesView(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, usuario=None):
         super().__init__(master, fg_color="transparent")
+        self.usuario = usuario
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
 
@@ -93,7 +94,21 @@ class ClientesView(ctk.CTkFrame):
                           fg_color="transparent", text_color=theme.TXT_MUTED,
                           hover_color=theme.GHOST,
                           command=lambda cid=c.id, n=c.nombre, s=c.saldo_cuenta:
-                          self._ajustar(cid, n, s)).pack(side="left")
+                          self._ajustar(cid, n, s)).pack(side="left", padx=(0, 4))
+            ctk.CTkButton(acciones, text="Editar", width=70, height=32,
+                          corner_radius=8, font=theme.fuente(13),
+                          fg_color="transparent", text_color=theme.TXT_MUTED,
+                          hover_color=theme.GHOST,
+                          command=lambda cli=c: self._editar(cli)).pack(
+                          side="left", padx=(0, 4))
+            # Eliminar clientes es solo para el administrador.
+            if self.usuario is not None and self.usuario.es_admin:
+                ctk.CTkButton(acciones, text="Eliminar", width=80, height=32,
+                              corner_radius=8, font=theme.fuente(13),
+                              fg_color="transparent", text_color=theme.ROJO,
+                              hover_color=theme.GHOST,
+                              command=lambda cid=c.id, n=c.nombre:
+                              self._eliminar(cid, n)).pack(side="left")
 
     def _nuevo(self) -> None:
         datos = ClienteDialog(self).mostrar()
@@ -104,6 +119,31 @@ class ClientesView(ctk.CTkFrame):
                                   datos["limite_credito"])
         except cliente_service.ClienteError as e:
             messagebox.showerror("No se pudo crear", str(e))
+            return
+        self._recargar()
+
+    def _editar(self, cliente) -> None:
+        datos = ClienteDialog(self, cliente).mostrar()
+        if datos is None:
+            return
+        try:
+            cliente_service.editar(cliente.id, datos["nombre"],
+                                   datos["telefono"], datos["limite_credito"])
+        except cliente_service.ClienteError as e:
+            messagebox.showerror("No se pudo editar", str(e))
+            return
+        self._recargar()
+
+    def _eliminar(self, cliente_id: str, nombre: str) -> None:
+        if not messagebox.askyesno(
+                "Eliminar cliente",
+                f"¿Seguro que querés eliminar a «{nombre}»?\n"
+                "Dejará de aparecer en la lista de clientes."):
+            return
+        try:
+            cliente_service.eliminar(cliente_id)
+        except cliente_service.ClienteError as e:
+            messagebox.showerror("No se pudo eliminar", str(e))
             return
         self._recargar()
 

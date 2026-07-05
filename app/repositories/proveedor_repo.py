@@ -29,6 +29,55 @@ def crear(conn: sqlite3.Connection, proveedor: Proveedor) -> None:
     )
 
 
+def buscar_duplicado(conn: sqlite3.Connection, nombre: str,
+                     cuit: str | None = None,
+                     telefono: str | None = None,
+                     excluir_id: str | None = None) -> Proveedor | None:
+    """Busca un proveedor activo que colisione con los datos dados.
+
+    Coincide por nombre (sin distinguir mayúsculas ni espacios) o, si se
+    proveen, por CUIT o teléfono iguales. Sirve para evitar altas duplicadas.
+    `excluir_id` deja fuera al propio proveedor cuando se está editando.
+    """
+    condiciones = ["LOWER(TRIM(nombre)) = LOWER(TRIM(?))"]
+    params: list[str] = [nombre]
+    if cuit and cuit.strip():
+        condiciones.append("TRIM(cuit) = TRIM(?)")
+        params.append(cuit)
+    if telefono and telefono.strip():
+        condiciones.append("TRIM(telefono) = TRIM(?)")
+        params.append(telefono)
+    sql = ("SELECT id, nombre, cuit, telefono, email, saldo_cuenta, activo "
+           "FROM proveedores WHERE activo = 1 AND ("
+           + " OR ".join(condiciones) + ")")
+    if excluir_id:
+        sql += " AND id != ?"
+        params.append(excluir_id)
+    row = conn.execute(sql + " LIMIT 1", params).fetchone()
+    return _to_proveedor(row) if row else None
+
+
+def actualizar(conn: sqlite3.Connection, proveedor: Proveedor) -> None:
+    """Actualiza los datos de contacto del proveedor (no toca el saldo).
+
+    Marca `sincronizado = 0` para que el cambio suba a la nube."""
+    conn.execute(
+        "UPDATE proveedores SET nombre = ?, cuit = ?, telefono = ?, email = ?, "
+        "sincronizado = 0, updated_at = ? WHERE id = ?",
+        (proveedor.nombre, proveedor.cuit, proveedor.telefono, proveedor.email,
+         ahora_iso(), proveedor.id),
+    )
+
+
+def eliminar(conn: sqlite3.Connection, proveedor_id: str) -> None:
+    """Baja lógica: marca el proveedor como inactivo (no borra el registro para
+    conservar el historial). Marca `sincronizado = 0` para propagar la baja."""
+    conn.execute(
+        "UPDATE proveedores SET activo = 0, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?", (ahora_iso(), proveedor_id),
+    )
+
+
 def obtener(conn: sqlite3.Connection, proveedor_id: str) -> Proveedor | None:
     row = conn.execute(
         "SELECT id, nombre, cuit, telefono, email, saldo_cuenta, activo "

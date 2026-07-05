@@ -11,6 +11,26 @@ class ProveedorError(Exception):
     """Error de negocio esperable (se muestra al usuario)."""
 
 
+def _verificar_duplicado(conn, nombre: str, cuit: str | None,
+                         telefono: str | None,
+                         excluir_id: str | None = None) -> None:
+    """Lanza ProveedorError si otro proveedor colisiona por nombre, CUIT o
+    teléfono. `excluir_id` deja fuera al propio proveedor al editar."""
+    existente = proveedor_repo.buscar_duplicado(
+        conn, nombre, cuit, telefono, excluir_id=excluir_id)
+    if existente is None:
+        return
+    if existente.nombre.strip().lower() == nombre.lower():
+        motivo = f"Ya existe un proveedor con el nombre «{existente.nombre}»."
+    elif cuit and existente.cuit and existente.cuit.strip() == cuit.strip():
+        motivo = (f"El CUIT ya está registrado en el proveedor "
+                  f"«{existente.nombre}».")
+    else:
+        motivo = (f"El teléfono ya está registrado en el proveedor "
+                  f"«{existente.nombre}».")
+    raise ProveedorError(motivo)
+
+
 def crear(nombre: str, cuit: str | None = None,
           telefono: str | None = None, email: str | None = None) -> str:
     nombre = (nombre or "").strip()
@@ -22,10 +42,55 @@ def crear(nombre: str, cuit: str | None = None,
     conn = db_local.connect()
     try:
         with conn:
+            _verificar_duplicado(conn, nombre, cuit, telefono)
             proveedor_repo.crear(conn, proveedor)
     finally:
         conn.close()
     return proveedor.id
+
+
+def editar(proveedor_id: str, nombre: str, cuit: str | None = None,
+           telefono: str | None = None, email: str | None = None) -> None:
+    """Actualiza los datos de contacto de un proveedor existente.
+
+    Valida el nombre y evita colisiones con otros proveedores (mismo nombre,
+    CUIT o teléfono)."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        raise ProveedorError("El proveedor necesita un nombre.")
+    conn = db_local.connect()
+    try:
+        with conn:
+            actual = proveedor_repo.obtener(conn, proveedor_id)
+            if actual is None:
+                raise ProveedorError("Proveedor inexistente.")
+            _verificar_duplicado(conn, nombre, cuit, telefono,
+                                 excluir_id=proveedor_id)
+            actual.nombre = nombre
+            actual.cuit = cuit
+            actual.telefono = telefono
+            actual.email = email
+            proveedor_repo.actualizar(conn, actual)
+    finally:
+        conn.close()
+
+
+def eliminar(proveedor_id: str) -> None:
+    """Da de baja un proveedor (baja lógica). No permite eliminar si tiene saldo
+    pendiente, para no perder el rastro de lo que se le debe."""
+    conn = db_local.connect()
+    try:
+        with conn:
+            actual = proveedor_repo.obtener(conn, proveedor_id)
+            if actual is None:
+                raise ProveedorError("Proveedor inexistente.")
+            if actual.saldo_cuenta != Decimal("0"):
+                raise ProveedorError(
+                    "No se puede eliminar: el proveedor tiene saldo pendiente. "
+                    "Registrá el pago o ajustá el saldo a cero primero.")
+            proveedor_repo.eliminar(conn, proveedor_id)
+    finally:
+        conn.close()
 
 
 def listar_activos() -> list[Proveedor]:

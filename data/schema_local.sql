@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     username      TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     salt          TEXT NOT NULL,
-    rol           TEXT NOT NULL,               -- ADMIN | EMPLEADO
+    rol           TEXT NOT NULL,               -- SUPER_ADMIN | ADMIN | EMPLEADO
     activo        INTEGER NOT NULL DEFAULT 1,
     sincronizado  INTEGER NOT NULL DEFAULT 0,
     updated_at    TEXT NOT NULL

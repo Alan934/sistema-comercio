@@ -92,7 +92,19 @@ class ProveedoresView(ctk.CTkFrame):
                           fg_color="transparent", text_color=theme.TXT_MUTED,
                           hover_color=theme.GHOST,
                           command=lambda pid=p.id, n=p.nombre, s=p.saldo_cuenta:
-                          self._ajustar(pid, n, s)).pack(side="left")
+                          self._ajustar(pid, n, s)).pack(side="left", padx=(0, 4))
+            ctk.CTkButton(acciones, text="Editar", width=70, height=32,
+                          corner_radius=8, font=theme.fuente(13),
+                          fg_color="transparent", text_color=theme.TXT_MUTED,
+                          hover_color=theme.GHOST,
+                          command=lambda prov=p: self._editar(prov)).pack(
+                          side="left", padx=(0, 4))
+            ctk.CTkButton(acciones, text="Eliminar", width=80, height=32,
+                          corner_radius=8, font=theme.fuente(13),
+                          fg_color="transparent", text_color=theme.ROJO,
+                          hover_color=theme.GHOST,
+                          command=lambda pid=p.id, n=p.nombre:
+                          self._eliminar(pid, n)).pack(side="left")
 
     def _nuevo(self) -> None:
         datos = ProveedorDialog(self).mostrar()
@@ -103,6 +115,32 @@ class ProveedoresView(ctk.CTkFrame):
                                     datos["telefono"], datos["email"])
         except proveedor_service.ProveedorError as e:
             messagebox.showerror("No se pudo crear", str(e))
+            return
+        self._recargar()
+
+    def _editar(self, proveedor) -> None:
+        datos = ProveedorDialog(self, proveedor).mostrar()
+        if datos is None:
+            return
+        try:
+            proveedor_service.editar(proveedor.id, datos["nombre"],
+                                     datos["cuit"], datos["telefono"],
+                                     datos["email"])
+        except proveedor_service.ProveedorError as e:
+            messagebox.showerror("No se pudo editar", str(e))
+            return
+        self._recargar()
+
+    def _eliminar(self, proveedor_id: str, nombre: str) -> None:
+        if not messagebox.askyesno(
+                "Eliminar proveedor",
+                f"¿Seguro que querés eliminar a «{nombre}»?\n"
+                "Dejará de aparecer en la lista de proveedores."):
+            return
+        try:
+            proveedor_service.eliminar(proveedor_id)
+        except proveedor_service.ProveedorError as e:
+            messagebox.showerror("No se pudo eliminar", str(e))
             return
         self._recargar()
 

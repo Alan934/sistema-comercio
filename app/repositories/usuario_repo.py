@@ -32,6 +32,33 @@ def existe_username(conn: sqlite3.Connection, username: str) -> bool:
     ).fetchone() is not None
 
 
+def existe_username_otro(conn: sqlite3.Connection, username: str,
+                         excluir_id: str) -> bool:
+    """True si otro usuario activo (distinto de `excluir_id`) ya usa ese nombre."""
+    return conn.execute(
+        "SELECT 1 FROM usuarios WHERE username = ? AND id != ? AND activo = 1",
+        (username, excluir_id),
+    ).fetchone() is not None
+
+
+def actualizar(conn: sqlite3.Connection, usuario_id: str, username: str,
+               password_hash: str | None = None, salt: str | None = None) -> None:
+    """Actualiza el nombre y, si se pasan hash+salt, la contraseña. Marca la
+    fila para re-sincronizar con la nube."""
+    if password_hash is not None and salt is not None:
+        conn.execute(
+            "UPDATE usuarios SET username = ?, password_hash = ?, salt = ?, "
+            "sincronizado = 0, updated_at = ? WHERE id = ?",
+            (username, password_hash, salt, ahora_iso(), usuario_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE usuarios SET username = ?, sincronizado = 0, updated_at = ? "
+            "WHERE id = ?",
+            (username, ahora_iso(), usuario_id),
+        )
+
+
 def hay_usuarios(conn: sqlite3.Connection) -> bool:
     return conn.execute(
         "SELECT COUNT(*) AS n FROM usuarios WHERE activo = 1"

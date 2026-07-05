@@ -11,6 +11,22 @@ class ClienteError(Exception):
     """Error de negocio esperable."""
 
 
+def _verificar_duplicado(conn, nombre: str, telefono: str | None,
+                         excluir_id: str | None = None) -> None:
+    """Lanza ClienteError si otro cliente colisiona por nombre o teléfono.
+    `excluir_id` deja fuera al propio cliente al editar."""
+    existente = cliente_repo.buscar_duplicado(
+        conn, nombre, telefono, excluir_id=excluir_id)
+    if existente is None:
+        return
+    if existente.nombre.strip().lower() == nombre.lower():
+        motivo = f"Ya existe un cliente con el nombre «{existente.nombre}»."
+    else:
+        motivo = (f"El teléfono ya está registrado en el cliente "
+                  f"«{existente.nombre}».")
+    raise ClienteError(motivo)
+
+
 def crear(nombre: str, telefono: str | None = None,
           limite_credito: Decimal = Decimal("0")) -> str:
     nombre = (nombre or "").strip()
@@ -20,10 +36,49 @@ def crear(nombre: str, telefono: str | None = None,
     conn = db_local.connect()
     try:
         with conn:
+            _verificar_duplicado(conn, nombre, telefono)
             cliente_repo.crear(conn, cliente_id, nombre, telefono, limite_credito)
     finally:
         conn.close()
     return cliente_id
+
+
+def editar(cliente_id: str, nombre: str, telefono: str | None = None,
+           limite_credito: Decimal = Decimal("0")) -> None:
+    """Actualiza los datos de un cliente existente. Valida el nombre y evita
+    colisiones con otros clientes (mismo nombre o teléfono)."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        raise ClienteError("El cliente necesita un nombre.")
+    conn = db_local.connect()
+    try:
+        with conn:
+            actual = cliente_repo.obtener(conn, cliente_id)
+            if actual is None:
+                raise ClienteError("Cliente inexistente.")
+            _verificar_duplicado(conn, nombre, telefono, excluir_id=cliente_id)
+            cliente_repo.actualizar(conn, cliente_id, nombre, telefono,
+                                    limite_credito)
+    finally:
+        conn.close()
+
+
+def eliminar(cliente_id: str) -> None:
+    """Da de baja un cliente (baja lógica). No permite eliminar si tiene saldo
+    pendiente (deuda o saldo a favor), para no perder el rastro de la plata."""
+    conn = db_local.connect()
+    try:
+        with conn:
+            actual = cliente_repo.obtener(conn, cliente_id)
+            if actual is None:
+                raise ClienteError("Cliente inexistente.")
+            if actual.saldo_cuenta != Decimal("0"):
+                raise ClienteError(
+                    "No se puede eliminar: el cliente tiene saldo pendiente. "
+                    "Registrá el pago o ajustá el saldo a cero primero.")
+            cliente_repo.eliminar(conn, cliente_id)
+    finally:
+        conn.close()
 
 
 def ajustar_saldo(cliente_id: str, nuevo_saldo: Decimal) -> None:

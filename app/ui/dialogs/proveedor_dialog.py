@@ -7,17 +7,27 @@ from app.ui.dialogs.base import ModalBase
 
 
 class ProveedorDialog(ModalBase):
-    """Alta de proveedor. Devuelve dict {nombre, cuit, telefono, email} o None."""
+    """Alta o edición de proveedor. Devuelve dict {nombre, cuit, telefono,
+    email} o None. Si se pasa `proveedor`, precarga los campos para editar."""
 
-    def __init__(self, master):
-        super().__init__(master, "Nuevo proveedor")
+    def __init__(self, master, proveedor=None):
+        super().__init__(master,
+                         "Editar proveedor" if proveedor else "Nuevo proveedor")
         self._entries = {}
+        valores = {
+            "nombre": getattr(proveedor, "nombre", "") or "",
+            "cuit": getattr(proveedor, "cuit", "") or "",
+            "telefono": getattr(proveedor, "telefono", "") or "",
+            "email": getattr(proveedor, "email", "") or "",
+        }
         for fila, (etiqueta, clave) in enumerate(
                 [("Nombre", "nombre"), ("CUIT", "cuit"),
                  ("Teléfono", "telefono"), ("Correo", "email")]):
             ctk.CTkLabel(self, text=etiqueta, anchor="w").grid(
                 row=fila, column=0, sticky="w", padx=(20, 8), pady=6)
             ent = ctk.CTkEntry(self, width=240)
+            if valores[clave]:
+                ent.insert(0, valores[clave])
             ent.grid(row=fila, column=1, padx=(8, 20), pady=6)
             self._entries[clave] = ent
 

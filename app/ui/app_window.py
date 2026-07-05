@@ -12,7 +12,7 @@ from config import settings
 from app.core.sync_manager import SyncManager
 from app.core import updater
 from app.ui import theme
-from app.models.usuario import SECCIONES_POR_ROL
+from app.models.usuario import SECCIONES_POR_ROL, etiqueta_rol
 from app.ui.views.ventas_view import VentasView
 from app.ui.views.stock_view import StockView
 from app.ui.views.proveedores_view import ProveedoresView
@@ -61,7 +61,7 @@ class AppWindow(ctk.CTk):
             "caja": lambda: VentasView(contenido),
             "stock": lambda: StockView(contenido),
             "proveedores": lambda: ProveedoresView(contenido),
-            "clientes": lambda: ClientesView(contenido),
+            "clientes": lambda: ClientesView(contenido, self.usuario),
             "reportes": lambda: ReportesView(contenido),
             "cierres": lambda: CierresView(contenido, self.usuario),
             "usuarios": lambda: UsuariosView(contenido, self.usuario),
@@ -111,7 +111,7 @@ class AppWindow(ctk.CTk):
             text_color=theme.NAV_TXT_INACT, hover_color=theme.NAV_HOVER,
             command=self._cerrar_sesion).pack(side="bottom", fill="x",
                                               padx=12, pady=(4, 2))
-        rol_txt = "Administrador" if usuario.es_admin else "Empleado"
+        rol_txt = etiqueta_rol(usuario.rol)
         ctk.CTkLabel(side, text=f"{usuario.username}  ·  {rol_txt}",
                      text_color=theme.NAV_TXT, font=theme.fuente(12)).pack(
             side="bottom", pady=(10, 2))

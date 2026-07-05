@@ -1,7 +1,8 @@
 """Lógica de negocio de usuarios: alta, autenticación y roles."""
 from app.core import auth, db_local
 from app.core.utils import nuevo_id
-from app.models.usuario import Usuario, ADMIN, EMPLEADO
+from app.models.usuario import (Usuario, SUPER_ADMIN, ADMIN, EMPLEADO,
+                                roles_que_puede_crear)
 from app.repositories import usuario_repo
 
 
@@ -17,12 +18,16 @@ def hay_usuarios() -> bool:
         conn.close()
 
 
+def _validar_password(password: str) -> None:
+    if len(password or "") < 4:
+        raise UsuarioError("La contraseña debe tener al menos 4 caracteres.")
+
+
 def _crear(username: str, password: str, rol: str) -> str:
     username = (username or "").strip()
     if not username:
         raise UsuarioError("El usuario necesita un nombre.")
-    if len(password or "") < 4:
-        raise UsuarioError("La contraseña debe tener al menos 4 caracteres.")
+    _validar_password(password)
     conn = db_local.connect()
     try:
         if usuario_repo.existe_username(conn, username):
@@ -36,12 +41,43 @@ def _crear(username: str, password: str, rol: str) -> str:
     return uid
 
 
+def crear_super_admin(username: str, password: str) -> str:
+    return _crear(username, password, SUPER_ADMIN)
+
+
 def crear_admin(username: str, password: str) -> str:
     return _crear(username, password, ADMIN)
 
 
 def crear_empleado(username: str, password: str) -> str:
     return _crear(username, password, EMPLEADO)
+
+
+def crear(rol_actor: str, username: str, password: str, rol: str) -> str:
+    """Da de alta un usuario validando que `rol_actor` pueda crear ese `rol`."""
+    if rol not in roles_que_puede_crear(rol_actor):
+        raise UsuarioError("No tenés permiso para crear ese tipo de usuario.")
+    return _crear(username, password, rol)
+
+
+def editar(usuario_id: str, username: str, password: str | None = None) -> None:
+    """Actualiza el nombre de usuario y, si se pasa contraseña, la cambia.
+    Un `password` vacío o None deja la contraseña como estaba."""
+    username = (username or "").strip()
+    if not username:
+        raise UsuarioError("El usuario necesita un nombre.")
+    hash_hex = salt = None
+    if password:
+        _validar_password(password)
+        salt, hash_hex = auth.hash_password(password)
+    conn = db_local.connect()
+    try:
+        if usuario_repo.existe_username_otro(conn, username, usuario_id):
+            raise UsuarioError(f"Ya existe un usuario “{username}”.")
+        with conn:
+            usuario_repo.actualizar(conn, usuario_id, username, hash_hex, salt)
+    finally:
+        conn.close()
 
 
 def autenticar(username: str, password: str) -> Usuario | None:

@@ -10,6 +10,7 @@ Patrón de uso: cada hilo abre SU PROPIA conexión con connect().
 import sqlite3
 
 from config import settings
+from app.core.utils import ahora_iso
 
 
 def connect() -> sqlite3.Connection:
@@ -47,6 +48,27 @@ def _migrar(conn: sqlite3.Connection) -> None:
             if nombre not in existentes:
                 conn.execute(
                     f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}")
+    _promover_super_admin(conn)
+
+
+def _promover_super_admin(conn: sqlite3.Connection) -> None:
+    """Bases creadas antes del rol SUPER_ADMIN: si no hay ningún super admin y
+    existe un único administrador activo, se lo promueve (era el usuario inicial).
+    Con varios administradores no se toca nada para no promover de más."""
+    hay_super = conn.execute(
+        "SELECT 1 FROM usuarios WHERE rol = 'SUPER_ADMIN' LIMIT 1"
+    ).fetchone()
+    if hay_super is not None:
+        return
+    admins = conn.execute(
+        "SELECT id FROM usuarios WHERE rol = 'ADMIN' AND activo = 1"
+    ).fetchall()
+    if len(admins) == 1:
+        conn.execute(
+            "UPDATE usuarios SET rol = 'SUPER_ADMIN', sincronizado = 0, "
+            "updated_at = ? WHERE id = ?",
+            (ahora_iso(), admins[0]["id"]),
+        )
 
 
 def init_db() -> None:

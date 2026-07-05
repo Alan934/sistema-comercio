@@ -18,7 +18,7 @@ class AuthWindow(ctk.CTk):
         self.usuario = None
         self._setup = not usuario_service.hay_usuarios()
 
-        titulo = "Crear administrador" if self._setup else "Iniciar sesión"
+        titulo = "Crear super administrador" if self._setup else "Iniciar sesión"
         self.title(f"{settings.APP_NOMBRE} — {titulo}")
         self.resizable(False, False)
         self._centrar(400, 470 if self._setup else 410)
@@ -28,7 +28,7 @@ class AuthWindow(ctk.CTk):
 
         ctk.CTkLabel(cont, text="Kiosko", font=theme.fuente(28, "bold"),
                      text_color=theme.PRIMARY).pack(pady=(6, 2))
-        sub = ("Creá el usuario administrador para empezar." if self._setup
+        sub = ("Creá el usuario super administrador para empezar." if self._setup
                else "Ingresá con tu usuario y contraseña.")
         ctk.CTkLabel(cont, text=sub, font=theme.fuente(13),
                      text_color=theme.TXT_MUTED).pack(pady=(0, 18))
@@ -77,7 +77,7 @@ class AuthWindow(ctk.CTk):
                 self.lbl_error.configure(text="Las contraseñas no coinciden")
                 return
             try:
-                usuario_service.crear_admin(user, pw)
+                usuario_service.crear_super_admin(user, pw)
             except usuario_service.UsuarioError as e:
                 self.lbl_error.configure(text=str(e))
                 return

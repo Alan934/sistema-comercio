@@ -10,14 +10,23 @@ from app.ui.dialogs.base import ModalBase
 
 
 class ClienteDialog(ModalBase):
-    def __init__(self, master):
-        super().__init__(master, "Nuevo cliente")
+    def __init__(self, master, cliente=None):
+        super().__init__(master,
+                         "Editar cliente" if cliente else "Nuevo cliente")
         self._entries = {}
-        campos = [
-            ("Nombre", "nombre", ""),
-            ("Teléfono", "telefono", ""),
-            ("Límite de crédito", "limite_credito", "0"),
-        ]
+        if cliente is not None:
+            campos = [
+                ("Nombre", "nombre", cliente.nombre or ""),
+                ("Teléfono", "telefono", cliente.telefono or ""),
+                ("Límite de crédito", "limite_credito",
+                 str(cliente.limite_credito)),
+            ]
+        else:
+            campos = [
+                ("Nombre", "nombre", ""),
+                ("Teléfono", "telefono", ""),
+                ("Límite de crédito", "limite_credito", "0"),
+            ]
         for fila, (etiqueta, clave, valor) in enumerate(campos):
             ctk.CTkLabel(self, text=etiqueta, anchor="w").grid(
                 row=fila, column=0, sticky="w", padx=(20, 8), pady=6)
