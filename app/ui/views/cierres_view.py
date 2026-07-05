@@ -2,12 +2,12 @@
 para hacer el cierre, e historial con las diferencias (para las métricas)."""
 from datetime import datetime
 from decimal import Decimal
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.services import cierre_service
 from app.ui import theme
+from app.ui.dialogs import notificar
 from app.ui.dialogs.cierre_dialog import CierreDialog
 
 
@@ -82,9 +82,11 @@ class CierresView(ctk.CTkFrame):
             ctk.CTkLabel(self.tabla, text="Todavía no hiciste ningún cierre.",
                          text_color=theme.TXT_MUTED).pack(pady=30)
             return
-        for c in cierres:
-            f = ctk.CTkFrame(self.tabla, fg_color="transparent")
-            f.pack(fill="x", padx=8, pady=3)
+        for i, c in enumerate(cierres):
+            f = ctk.CTkFrame(self.tabla,
+                             fg_color=theme.ROW_ALT if i % 2 else "transparent",
+                             corner_radius=8)
+            f.pack(fill="x", padx=6, pady=1)
             f.grid_columnconfigure(4, weight=1)
             dif = Decimal(str(c["diferencia"]))
             col = theme.VERDE if dif >= 0 else theme.ROJO
@@ -108,9 +110,10 @@ class CierresView(ctk.CTkFrame):
     def _realizar(self) -> None:
         resumen = cierre_service.resumen_periodo_abierto()
         if resumen["ventas_cantidad"] == 0 and resumen["gastos"] == 0:
-            if not messagebox.askyesno(
-                    "Cierre de caja",
-                    "No hubo ventas ni gastos en este período. ¿Cerrar igual?"):
+            if not notificar.confirmar(
+                    self, "Cierre de caja",
+                    "No hubo ventas ni gastos en este período. ¿Cerrar igual?",
+                    confirmar_txt="Cerrar igual", cancelar_txt="No"):
                 return
         datos = CierreDialog(self, resumen).mostrar()
         if datos is None:
@@ -121,6 +124,9 @@ class CierresView(ctk.CTkFrame):
         estado = ("Caja exacta." if dif == 0
                   else (f"Sobrante de {_money(dif)}." if dif > 0
                         else f"Faltante de {_money(abs(dif))}."))
-        messagebox.showinfo("Cierre registrado",
-                            f"Esperado: {_money(res['efectivo_esperado'])}\n{estado}")
+        tipo = "ok" if dif == 0 else "info"
+        notificar.informar(
+            self, "Cierre registrado",
+            f"Esperado en caja: {_money(res['efectivo_esperado'])}. {estado}",
+            tipo=tipo)
         self._recargar()

@@ -31,7 +31,7 @@ class ProveedorDialog(ModalBase):
             ent.grid(row=fila, column=1, padx=(8, 20), pady=6)
             self._entries[clave] = ent
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=4, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
@@ -65,7 +65,7 @@ class MontoDialog(ModalBase):
         self.ent = ctk.CTkEntry(self, width=200, justify="right", font=("", 18))
         self.ent.pack(padx=24, pady=8)
         self.ent.bind("<Return>", lambda _e: self._confirmar())
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.pack(padx=24)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
@@ -113,7 +113,7 @@ class PagoDialog(ModalBase):
         self.seg_metodo.set("Efectivo")
         self.seg_metodo.pack(padx=24, pady=(0, 4), fill="x")
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.pack(padx=24)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")

@@ -122,7 +122,7 @@ class ProductoDialog(ModalBase):
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
         fila += 1
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=fila, column=0, columnspan=2, padx=20)
         fila += 1
 

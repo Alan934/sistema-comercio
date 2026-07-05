@@ -4,12 +4,12 @@ CategoriaForm: formulario de una categoría (nombre + margen).
 CategoriasManager: lista de categorías con su margen y acceso a crear/editar.
 """
 from decimal import Decimal, InvalidOperation
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.services import categoria_service
 from app.ui import theme
+from app.ui.dialogs import notificar
 from app.ui.dialogs.base import ModalBase
 
 
@@ -36,7 +36,7 @@ class CategoriaForm(ModalBase):
                      text_color=theme.TXT_MUTED, font=theme.fuente(12)).grid(
             row=2, column=0, columnspan=2, sticky="w", padx=20)
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=3, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
@@ -132,7 +132,7 @@ class CategoriasManager(ModalBase):
         try:
             categoria_service.crear(datos["nombre"], datos["margen_pct"])
         except categoria_service.CategoriaError as e:
-            messagebox.showerror("No se pudo crear", str(e))
+            notificar.error(self, "No se pudo crear", str(e))
             return
         self._recargar()
 
@@ -144,6 +144,6 @@ class CategoriasManager(ModalBase):
             categoria_service.actualizar(categoria.id, datos["nombre"],
                                          datos["margen_pct"])
         except categoria_service.CategoriaError as e:
-            messagebox.showerror("No se pudo guardar", str(e))
+            notificar.error(self, "No se pudo guardar", str(e))
             return
         self._recargar()

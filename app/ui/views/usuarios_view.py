@@ -2,14 +2,14 @@
 
 El super admin gestiona administradores y empleados; el admin, solo empleados.
 """
-from tkinter import messagebox
-
 import customtkinter as ctk
 
 from app.models.usuario import (etiqueta_rol, puede_gestionar,
                                 roles_que_puede_crear)
 from app.services import usuario_service
 from app.ui import theme
+from app.ui.toast import mostrar_toast
+from app.ui.dialogs import notificar
 from app.ui.dialogs.usuario_dialog import UsuarioDialog
 
 
@@ -52,14 +52,18 @@ class UsuariosView(ctk.CTkFrame):
             w.destroy()
         # El admin no ve a los super admins; el super admin ve a todos.
         ve_todo = self.usuario_actual.es_super_admin
+        idx = 0
         for u in usuario_service.listar():
             if not ve_todo and u.es_super_admin:
                 continue
-            f = ctk.CTkFrame(self.tabla, fg_color="transparent")
-            f.pack(fill="x", padx=8, pady=2)
+            f = ctk.CTkFrame(self.tabla,
+                             fg_color=theme.ROW_ALT if idx % 2 else "transparent",
+                             corner_radius=8)
+            f.pack(fill="x", padx=6, pady=1)
+            idx += 1
             ctk.CTkLabel(f, text=u.username, width=240, anchor="w",
                          font=theme.fuente(15), text_color=theme.TXT).grid(
-                row=0, column=0, padx=4)
+                row=0, column=0, padx=4, pady=6)
             ctk.CTkLabel(f, text=etiqueta_rol(u.rol), width=180, anchor="w",
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
                 row=0, column=1, padx=4)
@@ -70,18 +74,18 @@ class UsuariosView(ctk.CTkFrame):
                 ctk.CTkLabel(acciones, text="(vos)", width=110, anchor="center",
                              text_color=theme.TXT_MUTED).pack(side="left")
             elif puede_gestionar(self.usuario_actual.rol, u.rol):
-                ctk.CTkButton(acciones, text="Editar", width=80, height=30,
-                              corner_radius=8, font=theme.fuente(13),
-                              fg_color="transparent", text_color=theme.TXT_MUTED,
-                              hover_color=theme.GHOST,
-                              command=lambda usr=u: self._editar(usr)).pack(
+                ctk.CTkButton(
+                    acciones, text="✏  Editar", width=100, height=32,
+                    corner_radius=8, font=theme.fuente(13), fg_color="transparent",
+                    text_color=theme.TXT_MUTED, hover_color=theme.GHOST,
+                    command=lambda usr=u: self._editar(usr)).pack(
                     side="left", padx=(0, 4))
-                ctk.CTkButton(acciones, text="Desactivar", width=110, height=30,
-                              corner_radius=8, font=theme.fuente(13),
-                              fg_color="transparent", text_color=theme.ROJO,
-                              hover_color=theme.GHOST,
-                              command=lambda uid=u.id, n=u.username:
-                              self._desactivar(uid, n)).pack(side="left")
+                ctk.CTkButton(
+                    acciones, text="🚫  Desactivar", width=130, height=32,
+                    corner_radius=8, font=theme.fuente(13), fg_color="transparent",
+                    text_color=theme.ROJO, hover_color=theme.GHOST,
+                    command=lambda uid=u.id, n=u.username:
+                    self._desactivar(uid, n)).pack(side="left")
 
     def _nuevo(self) -> None:
         roles = roles_que_puede_crear(self.usuario_actual.rol)
@@ -94,9 +98,10 @@ class UsuariosView(ctk.CTkFrame):
             usuario_service.crear(self.usuario_actual.rol, datos["username"],
                                   datos["password"], datos["rol"])
         except usuario_service.UsuarioError as e:
-            messagebox.showerror("No se pudo crear", str(e))
+            notificar.error(self, "No se pudo crear", str(e))
             return
         self._recargar()
+        mostrar_toast(self, "Usuario creado", tipo="ok")
 
     def _editar(self, usuario) -> None:
         if not puede_gestionar(self.usuario_actual.rol, usuario.rol):
@@ -108,14 +113,17 @@ class UsuariosView(ctk.CTkFrame):
             usuario_service.editar(usuario.id, datos["username"],
                                    datos["password"])
         except usuario_service.UsuarioError as e:
-            messagebox.showerror("No se pudo guardar", str(e))
+            notificar.error(self, "No se pudo guardar", str(e))
             return
         self._recargar()
+        mostrar_toast(self, "Cambios guardados", tipo="ok")
 
     def _desactivar(self, usuario_id: str, nombre: str) -> None:
-        if not messagebox.askyesno(
-                "Desactivar usuario",
-                f"¿Desactivar a “{nombre}”? No podrá volver a iniciar sesión."):
+        if not notificar.confirmar(
+                self, "Desactivar usuario",
+                f"¿Desactivar a «{nombre}»? No podrá volver a iniciar sesión.",
+                confirmar_txt="Sí, desactivar", cancelar_txt="No"):
             return
         usuario_service.desactivar(usuario_id)
         self._recargar()
+        mostrar_toast(self, f"«{nombre}» desactivado", tipo="ok")

@@ -28,6 +28,8 @@ ACCENT = "#1D9E75"
 APP_BG = ("#F4F6F5", "#1A1A1A")
 CARD_BG = ("#FFFFFF", "#2B2B2B")
 GHOST = ("#E6E8E7", "#3A3A3A")
+# Fila alterna en tablas (rayado zebra sutil sobre CARD_BG)
+ROW_ALT = ("#F5F7F6", "#333333")
 
 # --- Texto -----------------------------------------------------------------
 TXT = ("#1A1A1A", "#F0F0F0")

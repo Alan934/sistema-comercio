@@ -81,7 +81,7 @@ class ItemRemitoDialog(ModalBase):
         self.ent_venc = ctk.CTkEntry(self, width=200, placeholder_text="AAAA-MM-DD")
         self.ent_venc.grid(row=5, column=1, padx=(8, 20), pady=6)
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=6, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")

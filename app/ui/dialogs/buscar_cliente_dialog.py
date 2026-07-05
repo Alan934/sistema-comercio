@@ -2,13 +2,13 @@
 crear uno nuevo al instante. Devuelve un Cliente o None si se cancela.
 """
 from decimal import Decimal
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.models.cliente import Cliente
 from app.services import cliente_service
 from app.ui import theme
+from app.ui.dialogs import notificar
 from app.ui.dialogs.base import ModalBase
 from app.ui.dialogs.cliente_dialog import ClienteDialog
 
@@ -71,7 +71,7 @@ class BuscarClienteDialog(ModalBase):
             cid = cliente_service.crear(datos["nombre"], datos["telefono"],
                                         datos["limite_credito"])
         except cliente_service.ClienteError as e:
-            messagebox.showerror("No se pudo crear", str(e))
+            notificar.error(self, "No se pudo crear", str(e))
             return
         self._aceptar(Cliente(id=cid, nombre=datos["nombre"],
                               saldo_cuenta=Decimal("0"),

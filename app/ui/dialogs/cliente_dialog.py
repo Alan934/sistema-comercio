@@ -36,7 +36,7 @@ class ClienteDialog(ModalBase):
             ent.grid(row=fila, column=1, padx=(8, 20), pady=6)
             self._entries[clave] = ent
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=3, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")

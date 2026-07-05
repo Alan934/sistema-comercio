@@ -31,7 +31,7 @@ class AjusteSaldoDialog(ModalBase):
         ctk.CTkLabel(self, text="Poné 0 si está al día.", font=theme.fuente(12),
                      text_color=theme.TXT_MUTED).pack()
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.pack()
 
         cont = ctk.CTkFrame(self, fg_color="transparent")

@@ -146,9 +146,11 @@ class StockView(ctk.CTkFrame):
             ctk.CTkLabel(self.tabla, text=txt, font=theme.fuente(14),
                          text_color=theme.TXT_MUTED, justify="center").pack(pady=36)
             return
-        for p in visibles:
-            f = ctk.CTkFrame(self.tabla, fg_color="transparent")
-            f.pack(fill="x", padx=8, pady=2)
+        for i, p in enumerate(visibles):
+            f = ctk.CTkFrame(self.tabla,
+                             fg_color=theme.ROW_ALT if i % 2 else "transparent",
+                             corner_radius=8)
+            f.pack(fill="x", padx=6, pady=1)
             f.grid_columnconfigure(0, weight=1)
             stock_txt = f"{p.stock_actual} kg" if p.es_pesable else f"{p.stock_actual}"
             # Nombre + ubicación (debajo, en gris).
@@ -172,9 +174,10 @@ class StockView(ctk.CTkFrame):
             ctk.CTkLabel(f, text=stock_txt, width=80, anchor="w",
                          font=theme.fuente(14), text_color=theme.TXT).grid(
                 row=0, column=4, padx=4)
-            ctk.CTkButton(f, text="Editar", width=70, height=30, corner_radius=8,
-                          font=theme.fuente(13), fg_color="transparent",
-                          text_color=theme.ACCENT, hover_color=theme.GHOST,
+            ctk.CTkButton(f, text="✏  Editar", width=100, height=32,
+                          corner_radius=8, font=theme.fuente(13),
+                          fg_color="transparent", text_color=theme.ACCENT,
+                          hover_color=theme.GHOST,
                           command=lambda pid=p.id: self._editar_producto(pid)).grid(
                 row=0, column=5, padx=4)
 

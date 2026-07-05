@@ -26,7 +26,7 @@ class CantidadDialog(ModalBase):
         self.ent.pack(padx=24, pady=10)
         self.ent.bind("<Return>", lambda _e: self._confirmar())
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.pack()
 
         cont = ctk.CTkFrame(self, fg_color="transparent")

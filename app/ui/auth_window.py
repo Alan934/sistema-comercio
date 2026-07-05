@@ -21,44 +21,94 @@ class AuthWindow(ctk.CTk):
         titulo = "Crear super administrador" if self._setup else "Iniciar sesión"
         self.title(f"{settings.APP_NOMBRE} — {titulo}")
         self.resizable(False, False)
-        self._centrar(400, 470 if self._setup else 410)
+        self.configure(fg_color=theme.APP_BG)
+        self._centrar(420, 560 if self._setup else 500)
 
+        # Envoltorio centrado.
         cont = ctk.CTkFrame(self, fg_color="transparent")
-        cont.pack(expand=True, fill="both", padx=34, pady=24)
+        cont.pack(expand=True, fill="both", padx=30, pady=26)
 
-        ctk.CTkLabel(cont, text="Kiosko", font=theme.fuente(28, "bold"),
-                     text_color=theme.PRIMARY).pack(pady=(6, 2))
+        # --- Marca: cuadro "K" teal + nombre ---
+        marca = ctk.CTkFrame(cont, fg_color="transparent")
+        marca.pack(pady=(4, 18))
+        ctk.CTkLabel(marca, text="K", width=48, height=48, corner_radius=12,
+                     fg_color=theme.PRIMARY, text_color="#FFFFFF",
+                     font=theme.fuente(26, "bold")).pack(side="left")
+        ctk.CTkLabel(marca, text="Kiosko", font=theme.fuente(26, "bold"),
+                     text_color=theme.TXT).pack(side="left", padx=12)
+
+        # --- Tarjeta con el formulario ---
+        card = ctk.CTkFrame(cont, fg_color=theme.CARD_BG, corner_radius=16)
+        card.pack(fill="x")
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=26, pady=24)
+
+        ctk.CTkLabel(inner, text=titulo, font=theme.fuente(19, "bold"),
+                     text_color=theme.TXT, anchor="w").pack(fill="x")
         sub = ("Creá el usuario super administrador para empezar." if self._setup
                else "Ingresá con tu usuario y contraseña.")
-        ctk.CTkLabel(cont, text=sub, font=theme.fuente(13),
-                     text_color=theme.TXT_MUTED).pack(pady=(0, 18))
+        ctk.CTkLabel(inner, text=sub, font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED, anchor="w",
+                     justify="left", wraplength=320).pack(fill="x", pady=(2, 18))
 
-        ctk.CTkLabel(cont, text="Usuario", anchor="w").pack(fill="x")
-        self.ent_user = ctk.CTkEntry(cont, height=42, font=theme.fuente(15))
-        self.ent_user.pack(fill="x", pady=(2, 12))
+        ctk.CTkLabel(inner, text="Usuario", anchor="w", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).pack(fill="x")
+        self.ent_user = ctk.CTkEntry(inner, height=44, corner_radius=10,
+                                     font=theme.fuente(15),
+                                     placeholder_text="Tu usuario")
+        self.ent_user.pack(fill="x", pady=(4, 14))
 
-        ctk.CTkLabel(cont, text="Contraseña", anchor="w").pack(fill="x")
-        self.ent_pass = ctk.CTkEntry(cont, height=42, show="•", font=theme.fuente(15))
-        self.ent_pass.pack(fill="x", pady=(2, 12))
+        ctk.CTkLabel(inner, text="Contraseña", anchor="w", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).pack(fill="x")
+        self.ent_pass = self._password_con_ojo(inner, "Tu contraseña")
+        self.ent_pass.pack(fill="x", pady=(4, 14))
 
         self.ent_pass2 = None
         if self._setup:
-            ctk.CTkLabel(cont, text="Repetir contraseña", anchor="w").pack(fill="x")
-            self.ent_pass2 = ctk.CTkEntry(cont, height=42, show="•",
-                                          font=theme.fuente(15))
-            self.ent_pass2.pack(fill="x", pady=(2, 12))
+            ctk.CTkLabel(inner, text="Repetir contraseña", anchor="w",
+                         font=theme.fuente(13), text_color=theme.TXT_MUTED).pack(
+                fill="x")
+            self.ent_pass2 = self._password_con_ojo(inner, "Repetí la contraseña")
+            self.ent_pass2.pack(fill="x", pady=(4, 14))
 
-        self.lbl_error = ctk.CTkLabel(cont, text="", text_color="orange")
-        self.lbl_error.pack(pady=(0, 4))
+        self.lbl_error = ctk.CTkLabel(inner, text="", text_color=theme.ROJO,
+                                      font=theme.fuente(13), anchor="w",
+                                      justify="left", wraplength=320)
+        self.lbl_error.pack(fill="x", pady=(0, 6))
 
-        ctk.CTkButton(cont, text="Crear y entrar" if self._setup else "Ingresar",
-                      height=46, font=theme.fuente(16, "bold"),
+        ctk.CTkButton(inner, text="Crear y entrar" if self._setup else "Ingresar",
+                      height=48, corner_radius=10, font=theme.fuente(16, "bold"),
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._enviar).pack(fill="x", pady=(6, 0))
+
+        ctk.CTkLabel(cont, text=f"v{settings.APP_VERSION}",
+                     font=theme.fuente(11), text_color=theme.TXT_MUTED).pack(
+            side="bottom", pady=(14, 0))
 
         self.bind("<Return>", lambda _e: self._enviar())
         self.protocol("WM_DELETE_WINDOW", self._cerrar)
         self.after(80, self.ent_user.focus_set)
+
+    def _password_con_ojo(self, parent, placeholder: str) -> ctk.CTkEntry:
+        """Campo de contraseña con el típico botón de ojito para mostrar/ocultar
+        lo escrito. El ojito se ubica dentro del campo, a la derecha."""
+        ent = ctk.CTkEntry(parent, height=44, corner_radius=10, show="•",
+                           font=theme.fuente(15), placeholder_text=placeholder)
+        ojo = ctk.CTkButton(ent, text="👁", width=34, height=34, corner_radius=8,
+                            fg_color="transparent", hover_color=theme.GHOST,
+                            text_color=theme.TXT_MUTED, font=theme.fuente(15))
+
+        def alternar() -> None:
+            if ent.cget("show"):          # está oculta -> mostrar
+                ent.configure(show="")
+                ojo.configure(text="🙈")
+            else:                         # está visible -> ocultar
+                ent.configure(show="•")
+                ojo.configure(text="👁")
+
+        ojo.configure(command=alternar)
+        ojo.place(relx=1.0, rely=0.5, x=-5, anchor="e")
+        return ent
 
     def _centrar(self, w: int, h: int) -> None:
         x = max(0, (self.winfo_screenwidth() - w) // 2)

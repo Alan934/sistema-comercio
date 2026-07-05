@@ -2,12 +2,13 @@
 (con la ganancia neta destacada), desgloses y alta de gastos."""
 from datetime import date, timedelta
 from decimal import Decimal
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.services import reporte_service, gasto_service
 from app.ui import theme
+from app.ui.toast import mostrar_toast
+from app.ui.dialogs import notificar
 from app.ui.charts import BarChart, DonutChart
 from app.ui.dialogs.gasto_dialog import GastoDialog
 
@@ -114,55 +115,76 @@ class ReportesView(ctk.CTkFrame):
         self._dona(fila2, 1, "Ganancia por categoría",
                    [(c["categoria"], c["ganancia"]) for c in cats])
 
-        self._seccion("Productos más vendidos", [
+        self._seccion("🏆  Productos más vendidos", [
             (f"{t['producto']}  ({t['cantidad']})",
              f"{_money(t['total'])}   ·   gana {_money(t['ganancia'])}")
             for t in reporte_service.top_productos(desde, hasta, 10)])
 
-        self._seccion("Por proveedor", [
+        self._seccion("🚚  Por proveedor", [
             (p["proveedor"],
              f"comprado {_money(p['comprado'])}  ({p['remitos']} rem.)   ·   "
              f"{_deuda(p['deuda'])}")
             for p in reporte_service.ranking_proveedores(desde, hasta)])
 
-        self._seccion("Gastos por proveedor", [
+        self._seccion("💸  Gastos por proveedor", [
             (g["proveedor"], _money(g["total"]))
             for g in reporte_service.por_proveedor(desde, hasta)["gastos"]])
 
-        self._seccion("Detalle de gastos del período", [
+        self._seccion("🧾  Detalle de gastos del período", [
             (f"[{g['tipo']}] {g['descripcion']}"
              + (f"  · {g['proveedor_nombre']}" if g["proveedor_nombre"] else ""),
              _money(g["monto"]))
             for g in gasto_service.listar(desde.isoformat(), hasta.isoformat())])
 
     def _tarjetas(self, r: dict) -> None:
-        cont = ctk.CTkFrame(self.scroll, fg_color="transparent")
-        cont.pack(fill="x", padx=2, pady=4)
-        for i in range(3):
-            cont.grid_columnconfigure(i, weight=1, uniform="cards")
-
         neta = r["ganancia_neta"]
         color_neta = theme.VERDE if neta >= 0 else theme.ROJO
-        tarjetas = [
-            ("Ventas", str(r["ventas_cantidad"]), theme.TXT),
-            ("Unidades vendidas", _unidades(r["unidades"]), theme.TXT),
-            ("Ticket promedio", _money(r["ticket_promedio"]), theme.TXT),
-            ("Total vendido", _money(r["total_vendido"]), theme.TXT),
-            ("Costo total", _money(r["costo_total"]), theme.TXT),
-            ("Ganancia bruta", _money(r["ganancia_bruta"]), theme.TXT),
-            ("Gastos", _money(r["gastos_total"]), theme.TXT),
-            ("Ganancia neta", _money(neta), color_neta),
-            ("Margen", f"{r['margen_pct']}%", theme.VERDE),
+
+        # --- Fila "hero": los 3 números que más importan, en grande ---
+        hero = ctk.CTkFrame(self.scroll, fg_color="transparent")
+        hero.pack(fill="x", padx=2, pady=(2, 2))
+        for i in range(3):
+            hero.grid_columnconfigure(i, weight=1, uniform="hero")
+        destacadas = [
+            ("Total vendido", _money(r["total_vendido"]), theme.TXT, "🧾"),
+            ("Ganancia neta", _money(neta), color_neta, "📈"),
+            ("Margen", f"{r['margen_pct']}%",
+             theme.VERDE if neta >= 0 else theme.ROJO, "🎯"),
         ]
-        for idx, (titulo, valor, color) in enumerate(tarjetas):
+        for idx, (titulo, valor, color, icono) in enumerate(destacadas):
+            card = ctk.CTkFrame(hero, fg_color=theme.CARD_BG, corner_radius=14)
+            card.grid(row=0, column=idx, padx=6, pady=6, sticky="ew")
+            fila = ctk.CTkFrame(card, fg_color="transparent")
+            fila.pack(anchor="w", padx=16, pady=(14, 0))
+            ctk.CTkLabel(fila, text=icono, font=theme.fuente(16)).pack(side="left")
+            ctk.CTkLabel(fila, text=titulo, font=theme.fuente(13),
+                         text_color=theme.TXT_MUTED).pack(side="left", padx=6)
+            ctk.CTkLabel(card, text=valor, font=theme.fuente(30, "bold"),
+                         text_color=color, anchor="w").pack(
+                anchor="w", padx=16, pady=(2, 16))
+
+        # --- Secundarias: métricas de apoyo, más chicas ---
+        cont = ctk.CTkFrame(self.scroll, fg_color="transparent")
+        cont.pack(fill="x", padx=2, pady=(0, 4))
+        for i in range(3):
+            cont.grid_columnconfigure(i, weight=1, uniform="cards")
+        secundarias = [
+            ("Ventas", str(r["ventas_cantidad"])),
+            ("Unidades vendidas", _unidades(r["unidades"])),
+            ("Ticket promedio", _money(r["ticket_promedio"])),
+            ("Costo total", _money(r["costo_total"])),
+            ("Ganancia bruta", _money(r["ganancia_bruta"])),
+            ("Gastos", _money(r["gastos_total"])),
+        ]
+        for idx, (titulo, valor) in enumerate(secundarias):
             card = ctk.CTkFrame(cont, fg_color=theme.CARD_BG, corner_radius=12)
             card.grid(row=idx // 3, column=idx % 3, padx=6, pady=6, sticky="ew")
-            ctk.CTkLabel(card, text=titulo, font=theme.fuente(13),
+            ctk.CTkLabel(card, text=titulo, font=theme.fuente(12),
                          text_color=theme.TXT_MUTED, anchor="w").pack(
-                anchor="w", padx=14, pady=(12, 0))
-            ctk.CTkLabel(card, text=valor, font=theme.fuente(22, "bold"),
-                         text_color=color, anchor="w").pack(
-                anchor="w", padx=14, pady=(0, 12))
+                anchor="w", padx=14, pady=(10, 0))
+            ctk.CTkLabel(card, text=valor, font=theme.fuente(18, "bold"),
+                         text_color=theme.TXT, anchor="w").pack(
+                anchor="w", padx=14, pady=(0, 10))
 
     def _card(self, titulo: str) -> ctk.CTkFrame:
         """Crea una tarjeta con título y la devuelve para meterle un gráfico."""
@@ -212,6 +234,8 @@ class ReportesView(ctk.CTkFrame):
                 datos["tipo"], datos["descripcion"], datos["monto"],
                 proveedor_id=datos["proveedor_id"], metodo=datos["metodo"])
         except gasto_service.GastoError as e:
-            messagebox.showerror("No se pudo registrar", str(e))
+            notificar.error(self, "No se pudo registrar", str(e))
             return
         self._render()
+        mostrar_toast(self, f"Gasto de {_money(datos['monto'])} registrado",
+                      tipo="ok")

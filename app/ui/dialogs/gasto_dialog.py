@@ -51,7 +51,7 @@ class GastoDialog(ModalBase):
         self.ent_prov.grid(row=4, column=1, padx=(8, 20), pady=6)
         self._auto_prov = AutocompleteSimple(self.ent_prov, self, nombres)
 
-        self.lbl_error = ctk.CTkLabel(self, text="", text_color="orange")
+        self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=5, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
