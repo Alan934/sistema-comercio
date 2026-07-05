@@ -10,13 +10,14 @@ Flujo (sin cambios):
   - Cobrar (o F12) abre el modal de cobro y registra la venta.
 """
 from decimal import Decimal
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.models.carrito import Carrito
 from app.services import venta_service
 from app.ui import theme
+from app.ui.toast import mostrar_toast
+from app.ui.dialogs import notificar
 from app.ui.autocomplete import AutocompleteBuscador
 from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
@@ -146,8 +147,7 @@ class VentasView(ctk.CTkFrame):
             self.entry_scan.delete(0, "end")
             self._agregar(prod)
         else:
-            messagebox.showinfo("Sin resultados",
-                                f"No se encontró un producto con “{texto}”.")
+            mostrar_toast(self, f"No se encontró “{texto}”", tipo="error")
         self.entry_scan.focus_set()
 
     def _consultar_precio(self) -> None:
@@ -260,9 +260,10 @@ class VentasView(ctk.CTkFrame):
 
     def _cobrar(self) -> None:
         if self.carrito.esta_vacio():
-            messagebox.showinfo("Carrito vacío", "Agregá productos antes de cobrar.")
+            mostrar_toast(self, "Agregá productos antes de cobrar", tipo="info")
             return
-        resultado = CobroDialog(self, self.carrito.total).mostrar()
+        total = self.carrito.total
+        resultado = CobroDialog(self, total).mostrar()
         if resultado is None:
             self.entry_scan.focus_set()
             return
@@ -270,18 +271,19 @@ class VentasView(ctk.CTkFrame):
         try:
             venta_service.registrar_venta(self.carrito, pagos, cliente_id)
         except venta_service.VentaError as e:
-            messagebox.showerror("No se pudo cobrar", str(e))
+            notificar.error(self, "No se pudo cobrar", str(e))
             return
-        messagebox.showinfo("Venta registrada",
-                            f"Cobro exitoso por {_money(self.carrito.total)}.")
         self.carrito.vaciar()
         self._refrescar()
+        mostrar_toast(self, f"Venta registrada por {_money(total)}", tipo="ok")
         self.entry_scan.focus_set()
 
     def _cancelar_venta(self) -> None:
         if self.carrito.esta_vacio():
             return
-        if messagebox.askyesno("Cancelar venta", "¿Vaciar el carrito actual?"):
+        if notificar.confirmar(self, "Cancelar venta",
+                               "¿Querés vaciar el carrito actual?",
+                               confirmar_txt="Sí, vaciar", cancelar_txt="No"):
             self.carrito.vaciar()
             self._refrescar()
         self.entry_scan.focus_set()

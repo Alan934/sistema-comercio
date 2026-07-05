@@ -1,16 +1,18 @@
 """Vista de Stock: listado de productos, alta/edición, recepción de remitos
 y alertas (stock bajo y vencimientos)."""
 from decimal import Decimal
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from app.services import stock_service, compra_service
 from app.ui import theme
+from app.ui.toast import mostrar_toast
+from app.ui.dialogs import notificar
 from app.ui.autocomplete import AutocompleteSimple
 from app.ui.dialogs.producto_dialog import ProductoDialog
 from app.ui.dialogs.remito_dialog import RemitoDialog
 from app.ui.dialogs.categorias_dialog import CategoriasManager
+from app.ui.dialogs.alertas_dialog import AlertasDialog
 
 
 def _money(v) -> str:
@@ -72,13 +74,14 @@ class StockView(ctk.CTkFrame):
         self.banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(2, 8))
         self.banner.grid_columnconfigure(0, weight=1)
         self.lbl_alertas = ctk.CTkLabel(self.banner, text="", anchor="w",
-                                        font=theme.fuente(13))
-        self.lbl_alertas.grid(row=0, column=0, sticky="w", padx=14, pady=8)
-        ctk.CTkButton(self.banner, text="Ver alertas", width=110, height=30,
-                      corner_radius=8, font=theme.fuente(13),
-                      fg_color="transparent", text_color=theme.ACCENT,
-                      hover_color=theme.GHOST,
-                      command=self._ver_alertas).grid(row=0, column=1, padx=8)
+                                        font=theme.fuente(14, "bold"))
+        self.lbl_alertas.grid(row=0, column=0, sticky="w", padx=16, pady=10)
+        self.btn_ver = ctk.CTkButton(self.banner, text="Ver detalle", width=120,
+                                     height=32, corner_radius=8,
+                                     font=theme.fuente(13, "bold"),
+                                     fg_color=theme.ROJO, hover_color=theme.PRIMARY_HOVER,
+                                     command=self._ver_alertas)
+        self.btn_ver.grid(row=0, column=1, padx=8)
 
         # --- Encabezado de tabla ---
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -117,11 +120,15 @@ class StockView(ctk.CTkFrame):
         if vencs:
             partes.append(f"{len(vencs)} por vencer")
         if partes:
-            self.lbl_alertas.configure(text="  ⚠  " + " · ".join(partes),
+            self.banner.configure(fg_color=theme.ROJO_BG)
+            self.lbl_alertas.configure(text="⚠   " + "   ·   ".join(partes),
                                        text_color=theme.ROJO)
+            self.btn_ver.grid()
         else:
-            self.lbl_alertas.configure(text="  ✓  Sin alertas",
+            self.banner.configure(fg_color=theme.VERDE_BG)
+            self.lbl_alertas.configure(text="✓   Sin alertas de stock",
                                        text_color=theme.VERDE)
+            self.btn_ver.grid_remove()
 
     def _render_tabla(self) -> None:
         filtro = self.ent_buscar.get().strip().lower()
@@ -180,9 +187,10 @@ class StockView(ctk.CTkFrame):
         try:
             stock_service.crear_producto(datos)
         except stock_service.StockError as e:
-            messagebox.showerror("No se pudo crear", str(e))
+            notificar.error(self, "No se pudo crear", str(e))
             return
         self._recargar()
+        mostrar_toast(self, "Producto creado", tipo="ok")
 
     def _editar_producto(self, producto_id: str) -> None:
         actual = stock_service.obtener_producto(producto_id)
@@ -194,9 +202,10 @@ class StockView(ctk.CTkFrame):
         try:
             stock_service.actualizar_producto(producto_id, datos)
         except stock_service.StockError as e:
-            messagebox.showerror("No se pudo guardar", str(e))
+            notificar.error(self, "No se pudo guardar", str(e))
             return
         self._recargar()
+        mostrar_toast(self, "Cambios guardados", tipo="ok")
 
     def _recibir_remito(self) -> None:
         remito = RemitoDialog(self).mostrar()
@@ -207,10 +216,11 @@ class StockView(ctk.CTkFrame):
                 remito["proveedor_id"], remito["items"],
                 nro_remito=remito["nro_remito"], condicion=remito["condicion"])
         except compra_service.CompraError as e:
-            messagebox.showerror("No se pudo registrar el remito", str(e))
+            notificar.error(self, "No se pudo registrar el remito", str(e))
             return
-        messagebox.showinfo("Remito registrado", "Stock y costos actualizados.")
         self._recargar()
+        mostrar_toast(self, "Remito registrado · stock y costos actualizados",
+                      tipo="ok")
 
     def _gestionar_categorias(self) -> None:
         CategoriasManager(self).mostrar()
@@ -219,14 +229,4 @@ class StockView(ctk.CTkFrame):
     def _ver_alertas(self) -> None:
         bajos = stock_service.alertas_stock_bajo()
         vencs = stock_service.alertas_vencimientos(7)
-        lineas = []
-        if bajos:
-            lineas.append("STOCK BAJO:")
-            lineas += [f"  • {b['nombre']}: {b['stock_actual']} "
-                       f"(mín. {b['stock_minimo']})" for b in bajos]
-        if vencs:
-            lineas.append("\nPOR VENCER (7 días):")
-            lineas += [f"  • {v['producto']}: {v['fecha_vencimiento']} "
-                       f"(en {v['dias_restantes']} días)" for v in vencs]
-        messagebox.showinfo("Alertas",
-                            "\n".join(lineas) if lineas else "Sin alertas.")
+        AlertasDialog(self, bajos, vencs).mostrar()
