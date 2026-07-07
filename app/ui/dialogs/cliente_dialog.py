@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 import customtkinter as ctk
 
+from app.ui import theme
 from app.ui.dialogs.base import ModalBase
 
 

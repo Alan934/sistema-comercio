@@ -86,8 +86,17 @@ class AuthWindow(ctk.CTk):
             side="bottom", pady=(14, 0))
 
         self.bind("<Return>", lambda _e: self._enviar())
+        self.bind("<KeyRelease>", self._limpiar_error, add="+")
         self.protocol("WM_DELETE_WINDOW", self._cerrar)
         self.after(80, self.ent_user.focus_set)
+
+    def _limpiar_error(self, evento=None) -> None:
+        """Borra el mensaje de error al escribir (no al confirmar con Enter)."""
+        if evento is not None and getattr(evento, "keysym", "") in (
+                "Return", "KP_Enter"):
+            return
+        if self.lbl_error.cget("text"):
+            self.lbl_error.configure(text="")
 
     def _password_con_ojo(self, parent, placeholder: str) -> ctk.CTkEntry:
         """Campo de contraseña con el típico botón de ojito para mostrar/ocultar

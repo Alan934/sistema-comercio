@@ -14,8 +14,8 @@ ETIQUETA_ROL = {
 }
 
 # Qué secciones ve cada rol (claves de las vistas del menú lateral).
-_SECCIONES_ADMIN = ["caja", "stock", "proveedores", "clientes", "reportes",
-                    "cierres", "usuarios"]
+_SECCIONES_ADMIN = ["caja", "stock", "carne", "proveedores", "clientes",
+                    "reportes", "cierres", "usuarios"]
 SECCIONES_POR_ROL = {
     SUPER_ADMIN: _SECCIONES_ADMIN,
     ADMIN: _SECCIONES_ADMIN,

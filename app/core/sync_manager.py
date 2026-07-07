@@ -20,7 +20,7 @@ from app.core import db_local, db_cloud, network
 from app.repositories import (producto_repo, venta_repo, compra_repo,
                              cuenta_repo, gasto_repo, cliente_repo,
                              proveedor_repo, categoria_repo, usuario_repo,
-                             cierre_repo)
+                             cierre_repo, res_repo, pieza_repo, corte_repo)
 from config import settings
 
 try:
@@ -88,6 +88,21 @@ def _pull_catalogo(local, cloud) -> int:
         cur.execute("SELECT * FROM cierres_caja")
         for cierre in cur.fetchall():
             cierre_repo.sincronizar_desde_nube(local, cierre)
+            aplicados += 1
+
+        # Carne: reses -> piezas -> cortes (en ese orden por las FK locales;
+        # los productos ya se aplicaron arriba, así el FK cortes->productos entra).
+        cur.execute("SELECT * FROM reses")
+        for res in cur.fetchall():
+            res_repo.sincronizar_desde_nube(local, res)
+            aplicados += 1
+        cur.execute("SELECT * FROM piezas")
+        for pieza in cur.fetchall():
+            pieza_repo.sincronizar_desde_nube(local, pieza)
+            aplicados += 1
+        cur.execute("SELECT * FROM cortes")
+        for corte in cur.fetchall():
+            corte_repo.sincronizar_desde_nube(local, corte)
             aplicados += 1
 
     local.commit()
@@ -370,6 +385,105 @@ def _push_cierres(local, cloud) -> int:
     return len(pendientes)
 
 
+def _push_reses(local, cloud) -> int:
+    """Sube las reses pendientes (upsert)."""
+    pendientes = res_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for r in pendientes:
+                cur.execute(
+                    """INSERT INTO reses
+                         (id, proveedor_id, fecha, descripcion, peso_total,
+                          costo_por_kg, costo_total, margen_pct, condicion, estado,
+                          created_at, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         proveedor_id = EXCLUDED.proveedor_id, fecha = EXCLUDED.fecha,
+                         descripcion = EXCLUDED.descripcion,
+                         peso_total = EXCLUDED.peso_total,
+                         costo_por_kg = EXCLUDED.costo_por_kg,
+                         costo_total = EXCLUDED.costo_total,
+                         margen_pct = EXCLUDED.margen_pct,
+                         condicion = EXCLUDED.condicion, estado = EXCLUDED.estado,
+                         updated_at = EXCLUDED.updated_at""",
+                    (r["id"], r["proveedor_id"], _dt(r["fecha"]), r["descripcion"],
+                     _num(r["peso_total"]), _num(r["costo_por_kg"]),
+                     _num(r["costo_total"]), _num_null(r["margen_pct"]),
+                     r["condicion"], r["estado"], _dt(r["created_at"]),
+                     _dt(r["updated_at"])),
+                )
+    for r in pendientes:
+        res_repo.marcar_sincronizado(local, r["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_piezas(local, cloud) -> int:
+    """Sube las piezas pendientes (upsert). Van después de las reses por la FK."""
+    pendientes = pieza_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for p in pendientes:
+                cur.execute(
+                    """INSERT INTO piezas
+                         (id, res_id, nombre, fecha, peso, margen_pct, estado,
+                          updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         res_id = EXCLUDED.res_id, nombre = EXCLUDED.nombre,
+                         fecha = EXCLUDED.fecha, peso = EXCLUDED.peso,
+                         margen_pct = EXCLUDED.margen_pct, estado = EXCLUDED.estado,
+                         updated_at = EXCLUDED.updated_at""",
+                    (p["id"], p["res_id"], p["nombre"], _dt(p["fecha"]),
+                     _num(p["peso"]), _num_null(p["margen_pct"]), p["estado"],
+                     _dt(p["updated_at"])),
+                )
+    for p in pendientes:
+        pieza_repo.marcar_sincronizado(local, p["id"])
+    local.commit()
+    return len(pendientes)
+
+
+def _push_cortes(local, cloud) -> int:
+    """Sube los cortes CONFIRMADOS pendientes (upsert). Los borradores no suben."""
+    pendientes = corte_repo.obtener_pendientes_sync_confirmados(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for c in pendientes:
+                cur.execute(
+                    """INSERT INTO cortes
+                         (id, pieza_id, producto_id, descripcion, peso,
+                          precio_venta_kg, margen_pct, costo_kg, subtotal,
+                          es_desperdicio, confirmado, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         pieza_id = EXCLUDED.pieza_id,
+                         producto_id = EXCLUDED.producto_id,
+                         descripcion = EXCLUDED.descripcion, peso = EXCLUDED.peso,
+                         precio_venta_kg = EXCLUDED.precio_venta_kg,
+                         margen_pct = EXCLUDED.margen_pct, costo_kg = EXCLUDED.costo_kg,
+                         subtotal = EXCLUDED.subtotal,
+                         es_desperdicio = EXCLUDED.es_desperdicio,
+                         confirmado = EXCLUDED.confirmado,
+                         updated_at = EXCLUDED.updated_at""",
+                    (c["id"], c["pieza_id"], c["producto_id"], c["descripcion"],
+                     _num(c["peso"]), _num(c["precio_venta_kg"]),
+                     _num_null(c["margen_pct"]), _num(c["costo_kg"]),
+                     _num(c["subtotal"]), bool(c["es_desperdicio"]),
+                     bool(c["confirmado"]), _dt(c["updated_at"])),
+                )
+    for c in pendientes:
+        corte_repo.marcar_sincronizado(local, c["id"])
+    local.commit()
+    return len(pendientes)
+
+
 def _push_gastos(local, cloud) -> int:
     """Sube los gastos pendientes."""
     pendientes = gasto_repo.obtener_pendientes(local)
@@ -421,6 +535,10 @@ def sincronizar_ahora() -> dict:
         contactos = _push_catalogo(local, cloud)
         ventas = _push_ventas(local, cloud)
         compras = _push_compras(local, cloud)
+        # Carne: reses -> piezas -> cortes (ese orden por las FK de la nube).
+        reses = _push_reses(local, cloud)
+        piezas = _push_piezas(local, cloud)
+        cortes = _push_cortes(local, cloud)
         movimientos = _push_cuenta(local, cloud)
         gastos = _push_gastos(local, cloud)
         cierres = _push_cierres(local, cloud)
@@ -433,6 +551,9 @@ def sincronizar_ahora() -> dict:
                 "contactos_subidos": contactos,
                 "ventas_subidas": ventas,
                 "compras_subidas": compras,
+                "reses_subidas": reses,
+                "piezas_subidas": piezas,
+                "cortes_subidos": cortes,
                 "movimientos_subidos": movimientos,
                 "gastos_subidos": gastos,
                 "cierres_subidos": cierres,

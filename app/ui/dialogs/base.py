@@ -60,9 +60,32 @@ class ModalBase(ctk.CTkToplevel):
         y = max(0, (self.winfo_screenheight() - h) // 2)
         self.geometry(f"+{x}+{y}")
 
+    def _auto_limpiar_error(self) -> None:
+        """Si el diálogo tiene un label `self.lbl_error`, hace que se borre en
+        cuanto el usuario escribe en cualquier campo (el error solo tiene sentido
+        justo después de un intento fallido). No borra al confirmar con Enter ni
+        al cancelar con Esc."""
+        lbl = getattr(self, "lbl_error", None)
+        if lbl is None:
+            return
+
+        def _clear(evento=None):
+            if evento is not None and getattr(evento, "keysym", "") in (
+                    "Return", "KP_Enter", "Escape"):
+                return
+            try:
+                if lbl.winfo_exists() and lbl.cget("text"):
+                    lbl.configure(text="")
+            except Exception:  # noqa: BLE001  (widget en destrucción)
+                pass
+
+        # El bind en el Toplevel captura el KeyRelease de cualquier campo hijo.
+        self.bind("<KeyRelease>", _clear, add="+")
+
     def mostrar(self):
         # Centra en pantalla, se muestra y toma el foco modal.
         self._centrar()
+        self._auto_limpiar_error()
         self.deiconify()
         self.grab_set()
         self.wait_window()

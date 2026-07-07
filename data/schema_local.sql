@@ -82,6 +82,55 @@ CREATE TABLE IF NOT EXISTS compras_detalle (
     subtotal       NUMERIC(12,2) NOT NULL
 );
 
+-- ---------- Carne: despiece de reses ----------------------------------------
+--  Una res (media res) ingresa por kg a un costo/kg; se subdivide en piezas
+--  (Espalda/Pierna, se bajan en días distintos) y cada pieza en cortes. Al
+--  confirmar la pieza, cada corte suma stock a un producto pesable. La res
+--  queda ABIERTA hasta terminar de bajar todas sus piezas.
+CREATE TABLE IF NOT EXISTS reses (
+    id            TEXT PRIMARY KEY,
+    proveedor_id  TEXT REFERENCES proveedores(id),   -- quién vendió la res (opcional)
+    fecha         TEXT NOT NULL,                      -- día que ingresó
+    descripcion   TEXT NOT NULL DEFAULT 'Media res',  -- ej "Media res novillo"
+    peso_total    NUMERIC(12,3) NOT NULL DEFAULT 0,   -- kg ingresados (ej 120)
+    costo_por_kg  NUMERIC(12,2) NOT NULL DEFAULT 0,   -- $ por kg (ej 10000)
+    costo_total   NUMERIC(12,2) NOT NULL DEFAULT 0,   -- peso_total * costo_por_kg
+    margen_pct    NUMERIC(6,2),                       -- margen por defecto (hereda a piezas/cortes)
+    condicion     TEXT NOT NULL DEFAULT 'CONTADO',    -- CONTADO | CUENTA_CORRIENTE
+    estado        TEXT NOT NULL DEFAULT 'ABIERTA',    -- ABIERTA | CERRADA
+    sincronizado  INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS piezas (
+    id            TEXT PRIMARY KEY,
+    res_id        TEXT NOT NULL REFERENCES reses(id),
+    nombre        TEXT NOT NULL,                      -- Espalda | Pierna | ...
+    fecha         TEXT NOT NULL,                      -- día que se bajó la pieza
+    peso          NUMERIC(12,3) NOT NULL DEFAULT 0,   -- kg de la pieza (suma de cortes)
+    margen_pct    NUMERIC(6,2),                       -- override del margen de la res
+    estado        TEXT NOT NULL DEFAULT 'ABIERTA',    -- ABIERTA | CERRADA (stock ya cargado)
+    sincronizado  INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cortes (
+    id              TEXT PRIMARY KEY,
+    pieza_id        TEXT NOT NULL REFERENCES piezas(id),
+    producto_id     TEXT REFERENCES productos(id),      -- corte-producto que recibe stock (NULL hasta confirmar)
+    descripcion     TEXT NOT NULL,                      -- nombre del corte (snapshot)
+    peso            NUMERIC(12,3) NOT NULL DEFAULT 0,   -- kg del corte
+    precio_venta_kg NUMERIC(12,2) NOT NULL DEFAULT 0,   -- $ por kg de venta
+    margen_pct      NUMERIC(6,2),                       -- override (corte > pieza > res)
+    costo_kg        NUMERIC(12,2) NOT NULL DEFAULT 0,   -- snapshot costo/kg de la res al confirmar
+    subtotal        NUMERIC(12,2) NOT NULL DEFAULT 0,   -- peso * precio_venta_kg
+    es_desperdicio  INTEGER NOT NULL DEFAULT 0,         -- 1 = merma/hueso sin venta
+    confirmado      INTEGER NOT NULL DEFAULT 0,         -- 1 = ya sumó stock al producto
+    sincronizado    INTEGER NOT NULL DEFAULT 0,
+    updated_at      TEXT NOT NULL
+);
+
 -- ---------- Clientes (fiados) y ventas -------------------------------------
 CREATE TABLE IF NOT EXISTS clientes (
     id              TEXT PRIMARY KEY,
@@ -200,3 +249,5 @@ CREATE INDEX IF NOT EXISTS idx_ventas_sync  ON ventas(sincronizado);
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cm_entidad   ON cuenta_movimientos(entidad_tipo, entidad_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_venc   ON lotes(fecha_vencimiento);
+CREATE INDEX IF NOT EXISTS idx_piezas_res   ON piezas(res_id);
+CREATE INDEX IF NOT EXISTS idx_cortes_pieza ON cortes(pieza_id);

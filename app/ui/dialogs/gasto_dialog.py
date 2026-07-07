@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from app.models.gasto import FIJO, VARIABLE
 from app.services import proveedor_service
+from app.ui import theme
 from app.ui.autocomplete import AutocompleteSimple
 from app.ui.dialogs.base import ModalBase
 

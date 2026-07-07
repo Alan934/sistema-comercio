@@ -123,6 +123,16 @@ def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
     )
 
 
+def actualizar_precio(conn: sqlite3.Connection, producto_id: str, precio) -> None:
+    """Fija el precio de venta directamente (sin recalcular por margen). Lo usa
+    el despiece: cada corte define su propio precio/kg."""
+    conn.execute(
+        "UPDATE productos SET precio_venta = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
+        (str(precio), ahora_iso(), producto_id),
+    )
+
+
 def ubicaciones_distintas(conn: sqlite3.Connection) -> list[str]:
     """Ubicaciones ya usadas (para sugerir y filtrar)."""
     return [r["ubicacion"] for r in conn.execute(

@@ -14,6 +14,7 @@ from app.ui.dialogs import notificar
 from app.models.usuario import SECCIONES_POR_ROL, etiqueta_rol
 from app.ui.views.ventas_view import VentasView
 from app.ui.views.stock_view import StockView
+from app.ui.views.carne_view import CarneView
 from app.ui.views.proveedores_view import ProveedoresView
 from app.ui.views.clientes_view import ClientesView
 from app.ui.views.reportes_view import ReportesView
@@ -31,7 +32,10 @@ class AppWindow(ctk.CTk):
         self.cerrar_sesion = False
         self.title(f"{settings.APP_NOMBRE} v{settings.APP_VERSION}")
         self.minsize(900, 600)
-        self._centrar_ventana(1180, 740)
+        # Abre grande (88% de la pantalla, no completa): es la única app en uso
+        # y casi siempre se maximiza. Se adapta a cualquier monitor.
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self._centrar_ventana(int(sw * 0.88), int(sh * 0.88))
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -59,18 +63,19 @@ class AppWindow(ctk.CTk):
         constructores = {
             "caja": lambda: VentasView(contenido),
             "stock": lambda: StockView(contenido),
+            "carne": lambda: CarneView(contenido),
             "proveedores": lambda: ProveedoresView(contenido),
             "clientes": lambda: ClientesView(contenido, self.usuario),
             "reportes": lambda: ReportesView(contenido),
             "cierres": lambda: CierresView(contenido, self.usuario),
             "usuarios": lambda: UsuariosView(contenido, self.usuario),
         }
-        etiquetas = {"caja": "Caja", "stock": "Stock",
+        etiquetas = {"caja": "Caja", "stock": "Stock", "carne": "Carne",
                      "proveedores": "Proveedores", "clientes": "Clientes",
                      "reportes": "Reportes", "cierres": "Cierre de caja",
                      "usuarios": "Usuarios"}
         # Íconos (emoji: peso 0, no requieren imágenes ni Pillow).
-        iconos = {"caja": "🛒", "stock": "📦", "proveedores": "🚚",
+        iconos = {"caja": "🛒", "stock": "📦", "carne": "🥩", "proveedores": "🚚",
                   "clientes": "👥", "reportes": "📊", "cierres": "💰",
                   "usuarios": "👤"}
         secciones = SECCIONES_POR_ROL.get(usuario.rol, ["caja"])

@@ -79,6 +79,48 @@ CREATE TABLE IF NOT EXISTS compras_detalle (
     subtotal       NUMERIC(12,2) NOT NULL
 );
 
+-- ---------- Carne: despiece de reses (espejo del local) --------------------
+CREATE TABLE IF NOT EXISTS reses (
+    id            TEXT PRIMARY KEY,
+    proveedor_id  TEXT,
+    fecha         TIMESTAMPTZ NOT NULL,
+    descripcion   TEXT NOT NULL DEFAULT 'Media res',
+    peso_total    NUMERIC(12,3) NOT NULL DEFAULT 0,
+    costo_por_kg  NUMERIC(12,2) NOT NULL DEFAULT 0,
+    costo_total   NUMERIC(12,2) NOT NULL DEFAULT 0,
+    margen_pct    NUMERIC(6,2),
+    condicion     TEXT NOT NULL DEFAULT 'CONTADO',
+    estado        TEXT NOT NULL DEFAULT 'ABIERTA',
+    created_at    TIMESTAMPTZ NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS piezas (
+    id            TEXT PRIMARY KEY,
+    res_id        TEXT NOT NULL REFERENCES reses(id),
+    nombre        TEXT NOT NULL,
+    fecha         TIMESTAMPTZ NOT NULL,
+    peso          NUMERIC(12,3) NOT NULL DEFAULT 0,
+    margen_pct    NUMERIC(6,2),
+    estado        TEXT NOT NULL DEFAULT 'ABIERTA',
+    updated_at    TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cortes (
+    id              TEXT PRIMARY KEY,
+    pieza_id        TEXT NOT NULL REFERENCES piezas(id),
+    producto_id     TEXT,
+    descripcion     TEXT NOT NULL,
+    peso            NUMERIC(12,3) NOT NULL DEFAULT 0,
+    precio_venta_kg NUMERIC(12,2) NOT NULL DEFAULT 0,
+    margen_pct      NUMERIC(6,2),
+    costo_kg        NUMERIC(12,2) NOT NULL DEFAULT 0,
+    subtotal        NUMERIC(12,2) NOT NULL DEFAULT 0,
+    es_desperdicio  BOOLEAN NOT NULL DEFAULT FALSE,
+    confirmado      BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at      TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ventas (
     id            TEXT PRIMARY KEY,
     fecha         TIMESTAMPTZ NOT NULL,
@@ -173,3 +215,5 @@ CREATE INDEX IF NOT EXISTS idx_cloud_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_venta    ON ventas_detalle(venta_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_compra   ON compras_detalle(compra_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_cm_entidad   ON cuenta_movimientos(entidad_tipo, entidad_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_piezas_res    ON piezas(res_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_cortes_pieza  ON cortes(pieza_id);

@@ -168,19 +168,25 @@ class _AutocompleteBase:
 
 
 class AutocompleteBuscador(_AutocompleteBase):
-    """Sugiere productos por nombre mientras se escribe."""
+    """Sugiere productos por nombre mientras se escribe.
+
+    Por defecto busca en todo el catálogo (caja, remito). Con `buscar_fn` se
+    puede acotar el universo (ej. solo cortes de carne)."""
 
     def __init__(self, entry, contenedor, on_seleccionar,
-                 on_enter_directo=None, limite: int = 8):
+                 on_enter_directo=None, limite: int = 8, buscar_fn=None):
         super().__init__(entry, contenedor, limite)
         self.on_seleccionar = on_seleccionar
         self.on_enter_directo = on_enter_directo
+        self._buscar_fn = buscar_fn
 
     def _buscar(self, texto: str) -> list:
         # Parece un código de barra (lo escanea la pistolita): no sugerir por
         # nombre, así el Enter final hace la búsqueda por código exacta.
         if texto.isdigit() and len(texto) >= 6:
             return []
+        if self._buscar_fn is not None:
+            return self._buscar_fn(texto)
         return venta_service.buscar_por_nombre(texto)
 
     def _texto_fila(self, p) -> str:
