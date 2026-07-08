@@ -5,6 +5,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import reporte_service, gasto_service
 from app.ui import theme
 from app.ui.toast import mostrar_toast
@@ -14,7 +16,7 @@ from app.ui.dialogs.gasto_dialog import GastoDialog
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 def _deuda(v) -> str:
@@ -27,7 +29,7 @@ def _deuda(v) -> str:
 
 
 def _unidades(v) -> str:
-    return f"{float(v):g}"
+    return formato.numero(v)
 
 
 def _parse_fecha(texto: str) -> date | None:
@@ -185,7 +187,7 @@ class ReportesView(ctk.CTkFrame):
                    [(c["categoria"], c["ganancia"]) for c in cats])
 
         self._seccion("🏆  Productos más vendidos", [
-            (f"{t['producto']}  ({t['cantidad']})",
+            (f"{t['producto']}  ({formato.numero(t['cantidad'])})",
              f"{_money(t['total'])}   ·   gana {_money(t['ganancia'])}")
             for t in reporte_service.top_productos(desde, hasta, 10)])
 

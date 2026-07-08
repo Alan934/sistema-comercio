@@ -5,6 +5,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import cierre_service
 from app.ui import theme
 from app.ui.dialogs import notificar
@@ -12,7 +14,7 @@ from app.ui.dialogs.cierre_dialog import CierreDialog
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 def _fmt(ts) -> str:

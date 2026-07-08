@@ -14,6 +14,8 @@ from decimal import Decimal, InvalidOperation
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.venta import Pago, EFECTIVO, TRANSFERENCIA, TARJETA, FIADO
 from app.ui import theme
 from app.ui.dialogs.base import ModalBase
@@ -49,7 +51,7 @@ class CobroDialog(ModalBase):
         ctk.CTkLabel(cabecera, text="TOTAL A COBRAR", text_color="#CFEDE3",
                      font=theme.fuente(13, "bold")).grid(
             row=0, column=0, padx=28, pady=(18, 0))
-        ctk.CTkLabel(cabecera, text=f"${total:,.2f}", text_color="#FFFFFF",
+        ctk.CTkLabel(cabecera, text=f"{formato.moneda(total)}", text_color="#FFFFFF",
                      font=theme.fuente(38, "bold")).grid(
             row=1, column=0, padx=28, pady=(0, 18))
 
@@ -191,9 +193,9 @@ class CobroDialog(ModalBase):
             return
         _otros, _efectivo_nec, vuelto, restante = calc
         if restante and restante > 0:
-            self._set_estado(f"Falta:  ${restante:,.2f}", theme.ROJO, theme.GHOST)
+            self._set_estado(f"Falta:  {formato.moneda(restante)}", theme.ROJO, theme.GHOST)
         elif vuelto and vuelto > 0:
-            self._set_estado(f"Vuelto:  ${vuelto:,.2f}", "#FFFFFF", theme.VERDE)
+            self._set_estado(f"Vuelto:  {formato.moneda(vuelto)}", "#FFFFFF", theme.VERDE)
         else:
             self._set_estado("✓  Pago completo", "#FFFFFF", theme.VERDE)
 
@@ -217,7 +219,7 @@ class CobroDialog(ModalBase):
             return
         _otros, efectivo_nec, _vuelto, restante = calc
         if restante and restante > 0:
-            self._set_estado(f"Falta cubrir ${restante:,.2f}", theme.ROJO,
+            self._set_estado(f"Falta cubrir {formato.moneda(restante)}", theme.ROJO,
                              theme.GHOST)
             return
 

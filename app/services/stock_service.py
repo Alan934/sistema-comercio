@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.core import db_local, pricing
-from app.core.utils import ahora_iso, nuevo_id
+from app.core.utils import ahora_iso, nuevo_id, normalizar_nombre
 from app.models.producto import Producto
 from app.repositories import producto_repo, lote_repo, categoria_repo
 
@@ -21,7 +21,7 @@ def _a_margen(valor) -> Decimal | None:
 
 def _normalizar(datos: dict, *, con_id: bool) -> dict:
     """Completa valores por defecto y normaliza tipos para guardar."""
-    nombre = (datos.get("nombre") or "").strip()
+    nombre = normalizar_nombre(datos.get("nombre") or "")
     if not nombre:
         raise StockError("El producto necesita un nombre.")
     margen = _a_margen(datos.get("margen_pct"))

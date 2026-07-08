@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import nuevo_id
+from app.core.utils import nuevo_id, normalizar_nombre
 from app.models.cliente import Cliente
 from app.repositories import cliente_repo, cuenta_repo
 
@@ -29,7 +29,7 @@ def _verificar_duplicado(conn, nombre: str, telefono: str | None,
 
 def crear(nombre: str, telefono: str | None = None,
           limite_credito: Decimal = Decimal("0")) -> str:
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise ClienteError("El cliente necesita un nombre.")
     cliente_id = nuevo_id()
@@ -47,7 +47,7 @@ def editar(cliente_id: str, nombre: str, telefono: str | None = None,
            limite_credito: Decimal = Decimal("0")) -> None:
     """Actualiza los datos de un cliente existente. Valida el nombre y evita
     colisiones con otros clientes (mismo nombre o teléfono)."""
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise ClienteError("El cliente necesita un nombre.")
     conn = db_local.connect()

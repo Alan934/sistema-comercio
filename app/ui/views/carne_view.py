@@ -10,6 +10,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.res import ABIERTA
 from app.services import despiece_service as ds
 from app.ui import theme
@@ -21,11 +23,11 @@ from app.ui.dialogs.corte_dialog import CorteDialog
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 def _kg(v) -> str:
-    return f"{Decimal(str(v))} kg"
+    return formato.kg(v)
 
 
 class CarneView(ctk.CTkFrame):

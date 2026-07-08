@@ -14,6 +14,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.core import pricing
 from app.services import despiece_service
 from app.ui import theme
@@ -174,9 +176,9 @@ class CorteDialog(ModalBase):
         total = (peso * precio).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
         if self._por_margen():
             self.lbl_calc.configure(
-                text=f"→ Precio por kg: ${precio:,.2f}   ·   Total: ${total:,.2f}")
+                text=f"→ Precio por kg: {formato.moneda(precio)}   ·   Total: {formato.moneda(total)}")
         else:
-            self.lbl_calc.configure(text=f"→ Total del corte: ${total:,.2f}")
+            self.lbl_calc.configure(text=f"→ Total del corte: {formato.moneda(total)}")
 
     def _confirmar(self):
         nombre = self.ent_nombre.get().strip()

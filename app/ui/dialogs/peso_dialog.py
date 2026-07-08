@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.producto import Producto
 from app.ui.dialogs.base import ModalBase
 
@@ -25,7 +27,7 @@ class PesoDialog(ModalBase):
 
         ctk.CTkLabel(self, text=producto.nombre,
                      font=("", 18, "bold")).pack(padx=20, pady=(20, 2))
-        ctk.CTkLabel(self, text=f"Precio: ${producto.precio_venta:,.2f} / kg").pack(padx=20)
+        ctk.CTkLabel(self, text=f"Precio: {formato.moneda(producto.precio_venta)} / kg").pack(padx=20)
 
         self.entry = ctk.CTkEntry(self, width=200, justify="center",
                                   placeholder_text="Ej: 0.750", font=("", 20))
@@ -53,7 +55,7 @@ class PesoDialog(ModalBase):
             self.lbl_subtotal.configure(text="Subtotal: $0.00")
         else:
             self.lbl_subtotal.configure(
-                text=f"Subtotal: ${(kg * self.producto.precio_venta):,.2f}")
+                text=f"Subtotal: {formato.moneda(kg * self.producto.precio_venta)}")
 
     def _confirmar(self) -> None:
         kg = _parse_kg(self.entry.get())

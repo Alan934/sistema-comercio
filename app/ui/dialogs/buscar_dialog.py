@@ -1,6 +1,8 @@
 """Modal para elegir un producto cuando la búsqueda por nombre da varios."""
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.producto import Producto
 from app.ui.dialogs.base import ModalBase
 
@@ -16,7 +18,7 @@ class BuscarProductoDialog(ModalBase):
 
         for prod in resultados:
             unidad = "/kg" if prod.es_pesable else ""
-            texto = f"{prod.nombre}   —   ${prod.precio_venta:,.2f}{unidad}"
+            texto = f"{prod.nombre}   —   {formato.moneda(prod.precio_venta)}{unidad}"
             ctk.CTkButton(
                 lista, text=texto, anchor="w", height=40,
                 command=lambda p=prod: self._aceptar(p),

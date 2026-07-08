@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.compra import ItemCompra, CONTADO, CUENTA_CORRIENTE
 from app.services import venta_service, proveedor_service
 from app.ui import theme
@@ -121,10 +123,10 @@ class ItemRemitoDialog(ModalBase):
             return
         cant = _num(self.ent_cant.get(), permite_cero=False)
         if self._por_total():
-            self.lbl_calculo.configure(text=f"→ Cada uno: ${unitario:,.2f}")
+            self.lbl_calculo.configure(text=f"→ Cada uno: {formato.moneda(unitario)}")
         else:
             total = (unitario * cant).quantize(CENTAVOS)
-            self.lbl_calculo.configure(text=f"→ Total: ${total:,.2f}")
+            self.lbl_calculo.configure(text=f"→ Total: {formato.moneda(total)}")
 
     def _confirmar(self) -> None:
         cant = _num(self.ent_cant.get(), permite_cero=False)
@@ -260,19 +262,19 @@ class RemitoDialog(ModalBase):
             venc = f"  · vence {item.fecha_vencimiento}" if item.fecha_vencimiento else ""
             fila = ctk.CTkFrame(self.lista, fg_color="transparent")
             fila.pack(fill="x", padx=8, pady=2)
-            ctk.CTkLabel(fila, text=f"{item.cantidad}", width=60,
+            ctk.CTkLabel(fila, text=formato.numero(item.cantidad), width=60,
                          anchor="w").grid(row=0, column=0, padx=4)
             ctk.CTkLabel(fila, text=f"{nombre}{venc}", width=230,
                          anchor="w").grid(row=0, column=1, padx=4)
-            ctk.CTkLabel(fila, text=f"${item.costo_unitario:,.2f}", width=110,
+            ctk.CTkLabel(fila, text=f"{formato.moneda(item.costo_unitario)}", width=110,
                          anchor="w").grid(row=0, column=2, padx=4)
-            ctk.CTkLabel(fila, text=f"${item.subtotal:,.2f}", width=100,
+            ctk.CTkLabel(fila, text=f"{formato.moneda(item.subtotal)}", width=100,
                          anchor="w").grid(row=0, column=3, padx=4)
             ctk.CTkButton(fila, text="✕", width=36, fg_color="#b33",
                           hover_color="#922",
                           command=lambda idx=i: self._quitar(idx)).grid(
                 row=0, column=4, padx=4)
-        self.lbl_total.configure(text=f"TOTAL: ${total:,.2f}")
+        self.lbl_total.configure(text=f"TOTAL: {formato.moneda(total)}")
 
     # --- Confirmación -------------------------------------------------------
 

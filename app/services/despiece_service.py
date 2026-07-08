@@ -17,7 +17,7 @@ completo, o no entra nada. Confirmar una pieza es la operación crítica.
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.core import db_local, pricing
-from app.core.utils import ahora_iso, ahora_local, nuevo_id
+from app.core.utils import ahora_iso, ahora_local, nuevo_id, normalizar_nombre
 from app.models.res import Res, CONTADO, CUENTA_CORRIENTE, ABIERTA, CERRADA
 from app.models.pieza import Pieza
 from app.models.corte import Corte
@@ -155,7 +155,7 @@ def agregar_pieza(res_id, nombre, margen_pct=None, fecha=None) -> str:
                 raise DespieceError("La res no existe.")
             if res.estado != ABIERTA:
                 raise DespieceError("La res está cerrada; no admite más piezas.")
-            nom = (nombre or "").strip()
+            nom = normalizar_nombre(nombre or "")
             if not nom:
                 raise DespieceError("La pieza necesita un nombre (ej. Espalda).")
             pieza = Pieza(
@@ -191,7 +191,7 @@ def agregar_corte(pieza_id, descripcion, peso, precio_venta_kg=None,
             if pieza.estado != ABIERTA:
                 raise DespieceError("La pieza ya se confirmó; no admite más cortes.")
             res = res_repo.obtener(conn, pieza.res_id)
-            desc = (descripcion or "").strip()
+            desc = normalizar_nombre(descripcion or "")
             if not desc:
                 raise DespieceError("El corte necesita un nombre.")
             peso_d = _peso(peso, "peso del corte")
@@ -225,7 +225,7 @@ def editar_corte(corte_id, descripcion, peso, precio_venta_kg=None,
                 raise DespieceError("El corte ya cargó stock; no se puede editar.")
             pieza = pieza_repo.obtener(conn, corte.pieza_id)
             res = res_repo.obtener(conn, pieza.res_id)
-            desc = (descripcion or "").strip()
+            desc = normalizar_nombre(descripcion or "")
             if not desc:
                 raise DespieceError("El corte necesita un nombre.")
             corte.descripcion = desc

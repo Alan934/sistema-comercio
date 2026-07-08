@@ -6,6 +6,8 @@ por una lista temática y legible de un vistazo.
 """
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.ui import theme
 from app.ui.dialogs.base import ModalBase
 
@@ -43,7 +45,7 @@ class AlertasDialog(ModalBase):
             for b in bajos:
                 self._fila(
                     cuerpo, theme.ROJO, b["nombre"],
-                    f"Quedan {b['stock_actual']}  ·  mínimo {b['stock_minimo']}")
+                    f"Quedan {formato.numero(b['stock_actual'])}  ·  mínimo {formato.numero(b['stock_minimo'])}")
 
         if vencs:
             self._seccion(cuerpo, "POR VENCER (7 días)", theme.BADGE_KG_TXT)

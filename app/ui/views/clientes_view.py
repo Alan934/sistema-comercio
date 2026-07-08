@@ -4,6 +4,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import cliente_service
 from app.ui import theme
 from app.ui.toast import mostrar_toast
@@ -14,7 +16,7 @@ from app.ui.dialogs.ajuste_saldo_dialog import AjusteSaldoDialog
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 def _texto_saldo(saldo):

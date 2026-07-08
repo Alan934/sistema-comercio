@@ -15,6 +15,8 @@ Hay dos variantes:
 """
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import venta_service
 from app.ui import theme
 
@@ -194,7 +196,7 @@ class AutocompleteBuscador(_AutocompleteBase):
 
     def _decorar_fila(self, fila, p) -> None:
         unidad = " /kg" if p.es_pesable else ""
-        precio = f"${p.precio_venta:,.2f}{unidad}"
+        precio = f"{formato.moneda(p.precio_venta)}{unidad}"
         ctk.CTkLabel(fila, text=precio, font=theme.fuente(13),
                      text_color=theme.TXT_MUTED, fg_color="transparent").place(
             relx=1.0, rely=0.5, x=-10, anchor="e")

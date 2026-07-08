@@ -13,6 +13,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.carrito import Carrito
 from app.services import venta_service
 from app.ui import theme
@@ -26,7 +28,7 @@ from app.ui.dialogs.cantidad_dialog import CantidadDialog
 
 
 def _money(d: Decimal) -> str:
-    return f"${Decimal(str(d)):,.2f}"
+    return formato.moneda(d)
 
 
 class VentasView(ctk.CTkFrame):
@@ -195,7 +197,7 @@ class VentasView(ctk.CTkFrame):
         ctrl.pack(side="left")
         if item.es_pesable:
             # Pesable: el badge muestra el peso y al tocarlo se edita.
-            ctk.CTkButton(ctrl, text=f"{item.cantidad}\nkg", width=54, height=42,
+            ctk.CTkButton(ctrl, text=f"{formato.numero(item.cantidad)}\nkg", width=54, height=42,
                           corner_radius=8, fg_color=theme.BADGE_KG_BG,
                           text_color=theme.BADGE_KG_TXT, hover_color=theme.GHOST,
                           font=theme.fuente(12, "bold"),

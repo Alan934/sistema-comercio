@@ -8,6 +8,8 @@ import tkinter as tk
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.ui import theme
 
 
@@ -19,7 +21,7 @@ def _hex(color) -> str:
 
 
 def _money(v) -> str:
-    return f"${float(v):,.0f}"
+    return formato.moneda(v, decimales=0)
 
 
 class _BaseChart(ctk.CTkFrame):

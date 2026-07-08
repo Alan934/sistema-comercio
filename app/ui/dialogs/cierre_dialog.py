@@ -8,12 +8,14 @@ from decimal import Decimal, InvalidOperation
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.ui import theme
 from app.ui.dialogs.base import ModalBase
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 def _dec(texto) -> Decimal:

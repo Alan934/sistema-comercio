@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import nuevo_id
+from app.core.utils import nuevo_id, normalizar_nombre
 from app.models.proveedor import Proveedor
 from app.repositories import proveedor_repo, cuenta_repo
 
@@ -33,7 +33,7 @@ def _verificar_duplicado(conn, nombre: str, cuit: str | None,
 
 def crear(nombre: str, cuit: str | None = None,
           telefono: str | None = None, email: str | None = None) -> str:
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise ProveedorError("El proveedor necesita un nombre.")
     proveedor = Proveedor(
@@ -55,7 +55,7 @@ def editar(proveedor_id: str, nombre: str, cuit: str | None = None,
 
     Valida el nombre y evita colisiones con otros proveedores (mismo nombre,
     CUIT o teléfono)."""
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise ProveedorError("El proveedor necesita un nombre.")
     conn = db_local.connect()

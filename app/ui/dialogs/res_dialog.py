@@ -10,6 +10,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.models.res import CONTADO, CUENTA_CORRIENTE
 from app.services import proveedor_service
 from app.ui import theme
@@ -135,10 +137,10 @@ class ResDialog(ModalBase):
             return
         if self._por_total():
             pk = (costo / peso).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
-            self.lbl_calc.configure(text=f"→ Costo por kg: ${pk:,.2f}")
+            self.lbl_calc.configure(text=f"→ Costo por kg: {formato.moneda(pk)}")
         else:
             total = (peso * costo).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
-            self.lbl_calc.configure(text=f"→ Costo total de la res: ${total:,.2f}")
+            self.lbl_calc.configure(text=f"→ Costo total de la res: {formato.moneda(total)}")
 
     def _confirmar(self):
         peso = _num(self.ent_peso.get())

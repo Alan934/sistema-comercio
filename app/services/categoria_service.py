@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from app.core import db_local
+from app.core.utils import normalizar_nombre
 from app.models.categoria import Categoria
 from app.repositories import categoria_repo, producto_repo
 
@@ -11,7 +12,7 @@ class CategoriaError(Exception):
 
 
 def crear(nombre: str, margen_pct: Decimal | None = None) -> str:
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise CategoriaError("La categoría necesita un nombre.")
     conn = db_local.connect()
@@ -26,7 +27,7 @@ def actualizar(categoria_id: str, nombre: str,
                margen_pct: Decimal | None) -> None:
     """Edita la categoría y recalcula el precio de TODOS sus productos (los que
     tienen margen propio mantienen el suyo; los demás toman el nuevo)."""
-    nombre = (nombre or "").strip()
+    nombre = normalizar_nombre(nombre or "")
     if not nombre:
         raise CategoriaError("La categoría necesita un nombre.")
     conn = db_local.connect()

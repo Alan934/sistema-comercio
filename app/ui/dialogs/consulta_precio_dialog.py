@@ -7,6 +7,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import venta_service
 from app.ui import theme
 from app.ui.autocomplete import AutocompleteBuscador
@@ -14,7 +16,7 @@ from app.ui.dialogs.base import ModalBase
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 class ConsultaPrecioDialog(ModalBase):
@@ -80,9 +82,9 @@ class ConsultaPrecioDialog(ModalBase):
         self.lbl_nombre.configure(text=p.nombre)
         if p.es_pesable:
             self.lbl_precio.configure(text=f"{_money(p.precio_venta)} / kg")
-            stock = f"{p.stock_actual} kg"
+            stock = f"{formato.numero(p.stock_actual)} kg"
         else:
             self.lbl_precio.configure(text=_money(p.precio_venta))
-            stock = f"{p.stock_actual}"
+            stock = formato.numero(p.stock_actual)
         self.lbl_info.configure(
             text=f"Código: {p.codigo_barra or 'sin código'}  ·  Stock: {stock}")

@@ -4,6 +4,8 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
+from app.core import formato
+
 from app.services import stock_service, compra_service
 from app.ui import theme
 from app.ui.toast import mostrar_toast
@@ -16,7 +18,7 @@ from app.ui.dialogs.alertas_dialog import AlertasDialog
 
 
 def _money(v) -> str:
-    return f"${Decimal(str(v)):,.2f}"
+    return formato.moneda(v)
 
 
 class StockView(ctk.CTkFrame):
@@ -152,7 +154,7 @@ class StockView(ctk.CTkFrame):
                              corner_radius=8)
             f.pack(fill="x", padx=6, pady=1)
             f.grid_columnconfigure(0, weight=1)
-            stock_txt = f"{p.stock_actual} kg" if p.es_pesable else f"{p.stock_actual}"
+            stock_txt = (f"{formato.numero(p.stock_actual)} kg" if p.es_pesable else formato.numero(p.stock_actual))
             # Nombre + ubicación (debajo, en gris).
             celda = ctk.CTkFrame(f, fg_color="transparent")
             celda.grid(row=0, column=0, padx=4, sticky="w")
