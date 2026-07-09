@@ -10,6 +10,7 @@ from config import settings
 from app.core.sync_manager import SyncManager
 from app.core import updater
 from app.ui import theme
+from app.ui.scan_catcher import ScanCatcher
 from app.ui.dialogs import notificar
 from app.models.usuario import SECCIONES_POR_ROL, etiqueta_rol
 from app.ui.views.ventas_view import VentasView
@@ -133,6 +134,11 @@ class AppWindow(ctk.CTk):
 
         self.mostrar(secciones[0])
 
+        # --- Captura global del lector de código de barra ---
+        # Escanear funciona en Caja/Stock sin importar dónde esté el foco: el
+        # catcher detecta la ráfaga de la pistola y la enruta a la vista activa.
+        self._scan = ScanCatcher(self, self._enrutar_escaneo)
+
         # --- Sincronización en segundo plano ---
         self.sync = SyncManager()
         self.sync.start()
@@ -148,6 +154,13 @@ class AppWindow(ctk.CTk):
         x = max(0, (sw - w) // 2)
         y = max(0, (sh - h) // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _enrutar_escaneo(self, codigo: str) -> None:
+        """Le entrega el código escaneado a la vista activa si sabe procesarlo
+        (Caja lo agrega al carrito, Stock lo muestra o abre el alta)."""
+        vista = self._vistas.get(self._activa)
+        if vista is not None and hasattr(vista, "recibir_escaneo"):
+            vista.recibir_escaneo(codigo)
 
     def mostrar(self, clave: str) -> None:
         self._activa = clave

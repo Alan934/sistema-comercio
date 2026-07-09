@@ -122,13 +122,23 @@ class StockView(ctk.CTkFrame):
 
     # --- Escaneo ------------------------------------------------------------
 
-    def _on_scan(self, _event=None) -> None:
-        """La pistolita escaneó un código: si existe, muestra el producto para
-        ver su stock; si no existe, abre el alta con el código ya cargado."""
+    def _on_scan(self, _event=None) -> str:
+        """Enter en el campo de escaneo: delega en recibir_escaneo. Devuelve
+        'break' para consumir el Enter y que no lo reprocese la captura global."""
         codigo = self.ent_scan.get().strip()
-        if not codigo:
-            return
         self.ent_scan.delete(0, "end")
+        self.recibir_escaneo(codigo)
+        return "break"
+
+    def recibir_escaneo(self, codigo: str) -> None:
+        """Procesa un código escaneado, venga del campo de escaneo o de la
+        captura global (con el foco en cualquier lado): si existe, muestra el
+        producto para ver su stock; si no existe, abre el alta con el código ya
+        cargado."""
+        codigo = (codigo or "").strip()
+        if not codigo:
+            self.ent_scan.focus_set()
+            return
         prod = stock_service.buscar_por_codigo(codigo)
         if prod is not None:
             # Existe: filtro la tabla por su nombre para que se vea su stock.
@@ -139,21 +149,19 @@ class StockView(ctk.CTkFrame):
             stock_txt = (f"{formato.numero(prod.stock_actual)} kg"
                          if prod.es_pesable else formato.numero(prod.stock_actual))
             mostrar_toast(self, f"{prod.nombre} · stock {stock_txt}", tipo="ok")
-            self.ent_scan.focus_set()
         else:
             # No existe: alta de producto nuevo con el código precargado.
             datos = ProductoDialog(self, codigo_inicial=codigo).mostrar()
-            if datos is None:
-                self.ent_scan.focus_set()
-                return
-            try:
-                stock_service.crear_producto(datos)
-            except stock_service.StockError as e:
-                notificar.error(self, "No se pudo crear", str(e))
-                return
-            self._recargar()
-            mostrar_toast(self, "Producto creado", tipo="ok")
-            self.ent_scan.focus_set()
+            if datos is not None:
+                try:
+                    stock_service.crear_producto(datos)
+                except stock_service.StockError as e:
+                    notificar.error(self, "No se pudo crear", str(e))
+                    self.ent_scan.focus_set()
+                    return
+                self._recargar()
+                mostrar_toast(self, "Producto creado", tipo="ok")
+        self.ent_scan.focus_set()
 
     # --- Datos --------------------------------------------------------------
 

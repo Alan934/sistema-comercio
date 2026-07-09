@@ -6,6 +6,7 @@ from decimal import Decimal
 from app.core import pricing
 from app.core.utils import ahora_iso
 from app.models.producto import Producto
+from app.repositories import movimiento_repo
 
 _COLS = ("id, codigo_barra, nombre, es_pesable, unidad_medida, "
          "precio_venta, costo_compra, stock_actual, controla_stock, activo, "
@@ -80,6 +81,11 @@ def crear(conn: sqlite3.Connection, datos: dict) -> None:
               :stock_minimo, :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
         datos,
     )
+    # Stock inicial del alta: deja su movimiento para que viaje a las demás PCs.
+    inicial = Decimal(str(datos.get("stock_actual", "0")))
+    if inicial != 0:
+        movimiento_repo.registrar(conn, datos["id"], inicial,
+                                  movimiento_repo.ALTA, datos["id"])
 
 
 def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
@@ -99,19 +105,24 @@ def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
     )
 
 
-def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad) -> None:
-    """Suma stock (al recibir un remito). Lee/reescribe en Decimal."""
+def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad,
+                   tipo: str = movimiento_repo.COMPRA,
+                   referencia_id: str | None = None) -> None:
+    """Suma stock (al recibir un remito o confirmar un despiece). Lee/reescribe
+    en Decimal y anota el movimiento (delta positivo) en el ledger."""
     row = conn.execute(
         "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
     ).fetchone()
     if row is None:
         raise ValueError(f"Producto inexistente: {producto_id}")
+    cantidad = Decimal(str(cantidad))
     nuevo = Decimal(str(row["stock_actual"])) + cantidad
     conn.execute(
         "UPDATE productos SET stock_actual = ?, sincronizado = 0, updated_at = ? "
         "WHERE id = ?",
         (str(nuevo), ahora_iso(), producto_id),
     )
+    movimiento_repo.registrar(conn, producto_id, cantidad, tipo, referencia_id)
 
 
 def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
@@ -183,21 +194,25 @@ def buscar_por_nombre(conn: sqlite3.Connection, texto: str,
 
 
 def descontar_stock(conn: sqlite3.Connection, producto_id: str,
-                    cantidad: Decimal) -> None:
+                    cantidad: Decimal, tipo: str = movimiento_repo.VENTA,
+                    referencia_id: str | None = None) -> None:
     """Resta del stock leyendo y reescribiendo en Decimal (texto) para no
     perder precisión con pesos como 0.750. Permite stock negativo a propósito:
-    en un kiosko nunca se bloquea una venta por stock desactualizado."""
+    en un kiosko nunca se bloquea una venta por stock desactualizado.
+    Anota el movimiento (delta negativo) en el ledger."""
     row = conn.execute(
         "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
     ).fetchone()
     if row is None:
         raise ValueError(f"Producto inexistente: {producto_id}")
+    cantidad = Decimal(str(cantidad))
     nuevo_stock = Decimal(str(row["stock_actual"])) - cantidad
     conn.execute(
         "UPDATE productos SET stock_actual = ?, sincronizado = 0, updated_at = ? "
         "WHERE id = ?",
         (str(nuevo_stock), ahora_iso(), producto_id),
     )
+    movimiento_repo.registrar(conn, producto_id, -cantidad, tipo, referencia_id)
 
 
 # --- Sincronización desde la nube (nube -> local) --------------------------
@@ -240,9 +255,11 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
     - Si el producto local tiene cambios pendientes de subir (sincronizado=0),
       NO se pisa: gana lo local hasta que suba (evita perder ediciones).
     - Si ya existe y está sincronizado, actualiza el catálogo PERO conserva el
-      stock_actual local (lo descuentan las ventas de esta PC).
-    - Si es nuevo (PC nueva / restaurada), se inserta completo, incluido el
-      stock que viene de la nube. Queda marcado como sincronizado."""
+      stock_actual local (lo maneja el ledger de movimientos, no este pull).
+    - Si es nuevo (PC nueva / restaurada), se inserta con stock 0: el stock lo
+      reconstruye después _pull_movimientos sumando el ledger de la nube. Así el
+      libro de movimientos es la ÚNICA autoridad del stock y nunca se cuenta
+      doble (snapshot + ledger). Queda marcado como sincronizado."""
     actual = conn.execute(
         "SELECT sincronizado FROM productos WHERE id = ?", (fila["id"],)
     ).fetchone()
@@ -278,7 +295,7 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
              _txt_null(fila.get("margen_pct")), fila.get("ubicacion"),
-             _txt(fila["stock_actual"]),
+             "0",  # stock lo reconstruye _pull_movimientos desde el ledger
              _txt(fila["stock_minimo"]), _ib(fila["controla_stock"]),
              _ib(fila["controla_vencimiento"]), _ib(fila["activo"]),
              _ts(fila["updated_at"])),

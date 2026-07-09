@@ -92,7 +92,8 @@ class VentasView(ctk.CTkFrame):
         self._auto = AutocompleteBuscador(
             self.entry_scan, main,
             on_seleccionar=self._agregar_desde_busqueda,
-            on_enter_directo=self._enter_directo)
+            on_enter_directo=self._enter_directo,
+            buscar_codigo_fn=venta_service.buscar_por_codigo)
 
         # --- Columna derecha: panel de cobro ---
         panel = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=12)
@@ -140,19 +141,26 @@ class VentasView(ctk.CTkFrame):
         self.entry_scan.focus_set()
 
     def _enter_directo(self) -> None:
-        """Enter sin resultado seleccionado: prueba código exacto (la pistolita)."""
+        """Enter sin resultado seleccionado: procesa el texto como código."""
         texto = self.entry_scan.get().strip()
-        if not texto:
+        self.entry_scan.delete(0, "end")
+        self.recibir_escaneo(texto)
+
+    def recibir_escaneo(self, codigo) -> None:
+        """Procesa un código escaneado, venga del campo de escaneo o de la
+        captura global (con el foco en cualquier lado): si existe lo agrega al
+        carrito; si no, avisa. Los pesables abren el modal de peso."""
+        codigo = (codigo or "").strip()
+        if not codigo:
+            self.entry_scan.focus_set()
             return
-        prod = venta_service.buscar_por_codigo(texto)
+        prod = venta_service.buscar_por_codigo(codigo)
         if prod is not None:
-            self.entry_scan.delete(0, "end")
             self._agregar(prod)
         else:
-            self.entry_scan.delete(0, "end")
             notificar.error(
                 self, "Producto no encontrado",
-                f"El código {texto} no pertenece a ningún producto del "
+                f"El código {codigo} no pertenece a ningún producto del "
                 f"stock. Cargalo primero en la pantalla de Stock.")
         self.entry_scan.focus_set()
 

@@ -48,6 +48,23 @@ CREATE TABLE IF NOT EXISTS lotes (
     updated_at         TEXT NOT NULL
 );
 
+-- Libro de movimientos de stock (ledger): fuente de verdad del stock para
+-- sincronizar entre PCs. Cada cambio de stock (venta, remito, despiece, alta,
+-- ajuste) anota UNA fila inmutable con la cantidad con signo (+ entra, − sale).
+-- El stock_actual del producto es una caché = suma de estos deltas. Al bajar
+-- movimientos de otra PC, se aplica su delta al stock_actual local. Idempotente
+-- por id (UUID): cada movimiento se aplica exactamente una vez por PC.
+CREATE TABLE IF NOT EXISTS movimientos_stock (
+    id            TEXT PRIMARY KEY,
+    producto_id   TEXT NOT NULL REFERENCES productos(id),
+    fecha         TEXT NOT NULL,                    -- ISO local
+    tipo          TEXT NOT NULL,                    -- VENTA | COMPRA | DESPIECE | ALTA | AJUSTE
+    cantidad      NUMERIC(12,3) NOT NULL,           -- con signo: + entrada, − salida
+    referencia_id TEXT,                             -- venta_id / compra_id / corte_id / NULL
+    sincronizado  INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL
+);
+
 -- ---------- Proveedores y compras ------------------------------------------
 CREATE TABLE IF NOT EXISTS proveedores (
     id            TEXT PRIMARY KEY,
@@ -243,6 +260,8 @@ CREATE TABLE IF NOT EXISTS gastos (
 );
 
 -- ---------- Índices ---------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_mov_stock_sync ON movimientos_stock(sincronizado);
+CREATE INDEX IF NOT EXISTS idx_mov_stock_prod ON movimientos_stock(producto_id);
 CREATE INDEX IF NOT EXISTS idx_prod_codigo  ON productos(codigo_barra);
 CREATE INDEX IF NOT EXISTS idx_prod_nombre  ON productos(nombre);
 CREATE INDEX IF NOT EXISTS idx_ventas_sync  ON ventas(sincronizado);

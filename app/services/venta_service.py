@@ -79,7 +79,9 @@ def registrar_venta(carrito: Carrito, pagos: list[Pago],
             venta_repo.guardar(conn, venta, carrito.items, pagos)
             for it in carrito.items:
                 if it.controla_stock:
-                    producto_repo.descontar_stock(conn, it.producto_id, it.cantidad)
+                    producto_repo.descontar_stock(
+                        conn, it.producto_id, it.cantidad,
+                        referencia_id=venta.id)
             if monto_fiado > 0:
                 cuenta_repo.registrar_movimiento(
                     conn,

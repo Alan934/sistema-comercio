@@ -176,11 +176,13 @@ class AutocompleteBuscador(_AutocompleteBase):
     puede acotar el universo (ej. solo cortes de carne)."""
 
     def __init__(self, entry, contenedor, on_seleccionar,
-                 on_enter_directo=None, limite: int = 8, buscar_fn=None):
+                 on_enter_directo=None, limite: int = 8, buscar_fn=None,
+                 buscar_codigo_fn=None):
         super().__init__(entry, contenedor, limite)
         self.on_seleccionar = on_seleccionar
         self.on_enter_directo = on_enter_directo
         self._buscar_fn = buscar_fn
+        self._buscar_codigo_fn = buscar_codigo_fn
 
     def _buscar(self, texto: str) -> list:
         # Parece un código de barra (lo escanea la pistolita): no sugerir por
@@ -203,6 +205,21 @@ class AutocompleteBuscador(_AutocompleteBase):
 
     def _al_elegir(self, p) -> None:
         self.on_seleccionar(p)
+
+    def _on_enter(self, _e):
+        # Prioridad absoluta al código de barra exacto (la pistolita). Así el
+        # escaneo agrega SIEMPRE el producto correcto, sin depender de la
+        # longitud del código ni de que el desplegable de nombres esté abierto
+        # con una sugerencia resaltada (que si no, pisaría el escaneo).
+        texto = self.entry.get().strip()
+        if texto and self._buscar_codigo_fn is not None:
+            prod = self._buscar_codigo_fn(texto)
+            if prod is not None:
+                self._ocultar()
+                self.on_seleccionar(prod)
+                return "break"
+        # Sin código exacto: es una búsqueda por nombre normal.
+        return super()._on_enter(_e)
 
     def _enter_sin_seleccion(self):
         if self.on_enter_directo:

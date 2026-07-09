@@ -22,7 +22,7 @@ from app.models.res import Res, CONTADO, CUENTA_CORRIENTE, ABIERTA, CERRADA
 from app.models.pieza import Pieza
 from app.models.corte import Corte
 from app.repositories import (res_repo, pieza_repo, corte_repo, producto_repo,
-                              categoria_repo, cuenta_repo)
+                              categoria_repo, cuenta_repo, movimiento_repo)
 
 CENTAVOS = Decimal("0.01")
 KILOS = Decimal("0.001")
@@ -323,7 +323,9 @@ def confirmar_pieza(pieza_id) -> dict:
                     pid = _crear_producto_corte(
                         conn, c.descripcion, cat_id, res.costo_por_kg,
                         c.precio_venta_kg)
-                producto_repo.aumentar_stock(conn, pid, c.peso)
+                producto_repo.aumentar_stock(
+                    conn, pid, c.peso,
+                    tipo=movimiento_repo.DESPIECE, referencia_id=c.id)
                 corte_repo.marcar_confirmado(conn, c.id, pid, res.costo_por_kg)
                 confirmados += 1
 

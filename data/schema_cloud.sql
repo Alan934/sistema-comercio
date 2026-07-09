@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS clientes (
     updated_at      TIMESTAMPTZ NOT NULL
 );
 
+-- Libro de movimientos de stock (ledger). Respaldo central + fuente que cada
+-- PC baja para converger su stock. Inmutable; sin FK a productos a propósito.
+CREATE TABLE IF NOT EXISTS movimientos_stock (
+    id            TEXT PRIMARY KEY,
+    producto_id   TEXT NOT NULL,
+    fecha         TIMESTAMPTZ NOT NULL,
+    tipo          TEXT NOT NULL,
+    cantidad      NUMERIC(12,3) NOT NULL,
+    referencia_id TEXT,
+    created_at    TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS proveedores (
     id            TEXT PRIMARY KEY,
     nombre        TEXT NOT NULL,
@@ -211,6 +223,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     updated_at    TIMESTAMPTZ NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_cloud_mov_stock_prod ON movimientos_stock(producto_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_venta    ON ventas_detalle(venta_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_compra   ON compras_detalle(compra_id);

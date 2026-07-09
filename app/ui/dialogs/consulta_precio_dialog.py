@@ -56,7 +56,8 @@ class ConsultaPrecioDialog(ModalBase):
 
         self._auto = AutocompleteBuscador(
             self.entry, self, on_seleccionar=self._seleccionar,
-            on_enter_directo=self._enter_directo)
+            on_enter_directo=self._enter_directo,
+            buscar_codigo_fn=venta_service.buscar_por_codigo)
         self.after(60, self.entry.focus_set)
 
     def _seleccionar(self, prod) -> None:

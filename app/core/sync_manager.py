@@ -20,7 +20,8 @@ from app.core import db_local, db_cloud, network
 from app.repositories import (producto_repo, venta_repo, compra_repo,
                              cuenta_repo, gasto_repo, cliente_repo,
                              proveedor_repo, categoria_repo, usuario_repo,
-                             cierre_repo, res_repo, pieza_repo, corte_repo)
+                             cierre_repo, res_repo, pieza_repo, corte_repo,
+                             movimiento_repo)
 from config import settings
 
 try:
@@ -105,6 +106,31 @@ def _pull_catalogo(local, cloud) -> int:
             corte_repo.sincronizar_desde_nube(local, corte)
             aplicados += 1
 
+    local.commit()
+    return aplicados
+
+
+def _pull_movimientos(local, cloud) -> int:
+    """Baja del ledger de Neon los movimientos de stock que esta PC todavía no
+    tiene y aplica su delta al stock local (así convergen las dos cajas).
+
+    Debe correr DESPUÉS de _pull_catalogo: los productos tienen que existir
+    localmente para poder sumarles el delta. Idempotente por id: un movimiento
+    ya aplicado se saltea. Sólo trae del cloud los ids que no tenemos, para no
+    reprocesar todo el historial en cada ciclo."""
+    locales = {r["id"] for r in
+               local.execute("SELECT id FROM movimientos_stock")}
+    aplicados = 0
+    with cloud.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT id, producto_id, fecha, tipo, cantidad, referencia_id, "
+            "created_at FROM movimientos_stock"
+        )
+        for m in cur.fetchall():
+            if m["id"] in locales:
+                continue
+            if movimiento_repo.aplicar_desde_nube(local, m):
+                aplicados += 1
     local.commit()
     return aplicados
 
@@ -484,6 +510,31 @@ def _push_cortes(local, cloud) -> int:
     return len(pendientes)
 
 
+def _push_movimientos(local, cloud) -> int:
+    """Sube los movimientos de stock pendientes. Son inmutables (nunca se
+    editan), así que ON CONFLICT DO NOTHING alcanza para la idempotencia."""
+    pendientes = movimiento_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for m in pendientes:
+                cur.execute(
+                    """INSERT INTO movimientos_stock
+                         (id, producto_id, fecha, tipo, cantidad,
+                          referencia_id, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO NOTHING""",
+                    (m["id"], m["producto_id"], _dt(m["fecha"]), m["tipo"],
+                     _num(m["cantidad"]), m["referencia_id"],
+                     _dt(m["created_at"])),
+                )
+    for m in pendientes:
+        movimiento_repo.marcar_sincronizado(local, m["id"])
+    local.commit()
+    return len(pendientes)
+
+
 def _push_gastos(local, cloud) -> int:
     """Sube los gastos pendientes."""
     pendientes = gasto_repo.obtener_pendientes(local)
@@ -540,10 +591,13 @@ def sincronizar_ahora() -> dict:
         piezas = _push_piezas(local, cloud)
         cortes = _push_cortes(local, cloud)
         movimientos = _push_cuenta(local, cloud)
+        mov_stock = _push_movimientos(local, cloud)
         gastos = _push_gastos(local, cloud)
         cierres = _push_cierres(local, cloud)
         # BAJAR todo lo que falte (pobla una PC nueva o restaurada).
         bajados = _pull_catalogo(local, cloud)
+        # El stock converge acá: aplica los deltas del ledger de las otras PCs.
+        mov_stock_bajados = _pull_movimientos(local, cloud)
         return {"ok": True,
                 "categorias_subidas": cat,
                 "productos_subidos": prod,
@@ -555,9 +609,11 @@ def sincronizar_ahora() -> dict:
                 "piezas_subidas": piezas,
                 "cortes_subidos": cortes,
                 "movimientos_subidos": movimientos,
+                "movimientos_stock_subidos": mov_stock,
                 "gastos_subidos": gastos,
                 "cierres_subidos": cierres,
-                "bajados_de_nube": bajados}
+                "bajados_de_nube": bajados,
+                "movimientos_stock_bajados": mov_stock_bajados}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"error durante la sync: {e}"}
     finally:

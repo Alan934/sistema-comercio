@@ -186,7 +186,8 @@ class RemitoDialog(ModalBase):
         self._auto_prod = AutocompleteBuscador(
             self.ent_scan, self,
             on_seleccionar=self._agregar_producto,
-            on_enter_directo=self._on_scan)
+            on_enter_directo=self._on_scan,
+            buscar_codigo_fn=venta_service.buscar_por_codigo)
 
         # Encabezado de columnas.
         cabecera = ctk.CTkFrame(self, fg_color="transparent")
