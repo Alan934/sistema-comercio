@@ -60,6 +60,16 @@ class AppWindow(ctk.CTk):
         contenido.grid_rowconfigure(0, weight=1)
         contenido.grid_columnconfigure(0, weight=1)
 
+        # Overlay "Cargando…": se muestra sobre el contenido apenas se hace click
+        # en una sección, ANTES de reconstruir la tabla (que bloquea un momento),
+        # así el usuario ve que su click se registró. Se crea oculto.
+        self._overlay = ctk.CTkFrame(contenido, fg_color=theme.APP_BG,
+                                     corner_radius=0)
+        self._overlay_lbl = ctk.CTkLabel(
+            self._overlay, text="⏳   Cargando…", font=theme.fuente(17, "bold"),
+            text_color=theme.TXT_MUTED)
+        self._overlay_lbl.place(relx=0.5, rely=0.5, anchor="center")
+
         # --- Vistas y navegación según el ROL del usuario ---
         constructores = {
             "caja": lambda: VentasView(contenido),
@@ -71,10 +81,11 @@ class AppWindow(ctk.CTk):
             "cierres": lambda: CierresView(contenido, self.usuario),
             "usuarios": lambda: UsuariosView(contenido, self.usuario),
         }
-        etiquetas = {"caja": "Caja", "stock": "Stock", "carne": "Carne",
-                     "proveedores": "Proveedores", "clientes": "Clientes",
-                     "reportes": "Reportes", "cierres": "Cierre de caja",
-                     "usuarios": "Usuarios"}
+        etiquetas = self._etiquetas = {
+            "caja": "Caja", "stock": "Stock", "carne": "Carne",
+            "proveedores": "Proveedores", "clientes": "Clientes",
+            "reportes": "Reportes", "cierres": "Cierre de caja",
+            "usuarios": "Usuarios"}
         # Íconos (emoji: peso 0, no requieren imágenes ni Pillow).
         iconos = {"caja": "🛒", "stock": "📦", "carne": "🥩", "proveedores": "🚚",
                   "clientes": "👥", "reportes": "📊", "cierres": "💰",
@@ -165,15 +176,31 @@ class AppWindow(ctk.CTk):
     def mostrar(self, clave: str) -> None:
         self._activa = clave
         vista = self._vistas[clave]
-        if hasattr(vista, "al_mostrar"):
-            vista.al_mostrar()
-        vista.tkraise()
+
+        # 1) Feedback inmediato del click: resaltar el botón y mostrar el overlay
+        #    "Cargando…". Forzamos el repintado ANTES de reconstruir la tabla
+        #    (que bloquea un momento) para que el usuario vea que entró ya.
         for k, btn in self._botones.items():
             if k == clave:
                 btn.configure(fg_color=theme.NAV_ACTIVE_BG, text_color="#FFFFFF")
             else:
                 btn.configure(fg_color="transparent",
                               text_color=theme.NAV_TXT_INACT)
+        self._overlay_lbl.configure(
+            text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
+        self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._overlay.lift()
+        self.update_idletasks()  # pinta botón + overlay antes de bloquear
+
+        # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
+        #    tapado por el overlay para que no se vea el reacomodo de columnas.
+        if hasattr(vista, "al_mostrar"):
+            vista.al_mostrar()
+        vista.update_idletasks()
+
+        # 3) Revelar la vista ya armada y quitar el overlay.
+        vista.tkraise()
+        self._overlay.place_forget()
 
     def _toggle_tema(self) -> None:
         nuevo = "dark" if ctk.get_appearance_mode().lower() == "light" else "light"
