@@ -57,15 +57,29 @@ class StockView(ctk.CTkFrame):
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
                       command=self._recibir_remito).grid(row=0, column=4)
 
-        # Filtro por ubicación (segunda línea del encabezado): campo con
+        # Lector de código de barra (segunda línea): la pistolita escribe acá y
+        # al Enter, si el código existe muestra el producto para ver su stock; si
+        # no existe, abre el alta con el código ya cargado.
+        ctk.CTkLabel(top, text="Escanear:", font=theme.fuente(13, "bold"),
+                     text_color=theme.ACCENT).grid(row=1, column=0, sticky="w",
+                                                   pady=(8, 0))
+        self.ent_scan = ctk.CTkEntry(
+            top, height=38, corner_radius=10, font=theme.fuente(15),
+            placeholder_text="Escaneá un código con la pistola…")
+        self.ent_scan.grid(row=1, column=1, columnspan=4, sticky="ew",
+                           padx=8, pady=(8, 0))
+        self.ent_scan.bind("<Return>", self._on_scan)
+        self.ent_scan.bind("<KP_Enter>", self._on_scan)
+
+        # Filtro por ubicación (tercera línea del encabezado): campo con
         # autocompletado que filtra la ubicación mientras se escribe.
         ctk.CTkLabel(top, text="Ubicación:", font=theme.fuente(13),
-                     text_color=theme.TXT_MUTED).grid(row=1, column=0, sticky="w",
+                     text_color=theme.TXT_MUTED).grid(row=2, column=0, sticky="w",
                                                       pady=(8, 0))
         self.ent_ubic = ctk.CTkEntry(
             top, width=220, height=32, font=theme.fuente(13),
             placeholder_text="Todas")
-        self.ent_ubic.grid(row=1, column=1, sticky="w", padx=8, pady=(8, 0))
+        self.ent_ubic.grid(row=2, column=1, sticky="w", padx=8, pady=(8, 0))
         self._auto_ubic = AutocompleteSimple(
             self.ent_ubic, self, [],
             on_seleccionar=lambda _v: self._render_tabla())
@@ -104,6 +118,42 @@ class StockView(ctk.CTkFrame):
 
     def al_mostrar(self) -> None:
         self._recargar()
+        self.after(120, self.ent_scan.focus_set)
+
+    # --- Escaneo ------------------------------------------------------------
+
+    def _on_scan(self, _event=None) -> None:
+        """La pistolita escaneó un código: si existe, muestra el producto para
+        ver su stock; si no existe, abre el alta con el código ya cargado."""
+        codigo = self.ent_scan.get().strip()
+        if not codigo:
+            return
+        self.ent_scan.delete(0, "end")
+        prod = stock_service.buscar_por_codigo(codigo)
+        if prod is not None:
+            # Existe: filtro la tabla por su nombre para que se vea su stock.
+            self.ent_ubic.delete(0, "end")
+            self.ent_buscar.delete(0, "end")
+            self.ent_buscar.insert(0, prod.nombre)
+            self._render_tabla()
+            stock_txt = (f"{formato.numero(prod.stock_actual)} kg"
+                         if prod.es_pesable else formato.numero(prod.stock_actual))
+            mostrar_toast(self, f"{prod.nombre} · stock {stock_txt}", tipo="ok")
+            self.ent_scan.focus_set()
+        else:
+            # No existe: alta de producto nuevo con el código precargado.
+            datos = ProductoDialog(self, codigo_inicial=codigo).mostrar()
+            if datos is None:
+                self.ent_scan.focus_set()
+                return
+            try:
+                stock_service.crear_producto(datos)
+            except stock_service.StockError as e:
+                notificar.error(self, "No se pudo crear", str(e))
+                return
+            self._recargar()
+            mostrar_toast(self, "Producto creado", tipo="ok")
+            self.ent_scan.focus_set()
 
     # --- Datos --------------------------------------------------------------
 

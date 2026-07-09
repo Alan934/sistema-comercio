@@ -149,7 +149,11 @@ class VentasView(ctk.CTkFrame):
             self.entry_scan.delete(0, "end")
             self._agregar(prod)
         else:
-            mostrar_toast(self, f"No se encontró “{texto}”", tipo="error")
+            self.entry_scan.delete(0, "end")
+            notificar.error(
+                self, "Producto no encontrado",
+                f"El código {texto} no pertenece a ningún producto del "
+                f"stock. Cargalo primero en la pantalla de Stock.")
         self.entry_scan.focus_set()
 
     def _consultar_precio(self) -> None:

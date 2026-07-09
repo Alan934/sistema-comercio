@@ -105,6 +105,15 @@ def obtener_producto(producto_id: str) -> dict | None:
         conn.close()
 
 
+def buscar_por_codigo(codigo: str) -> Producto | None:
+    """Busca un producto por su código de barra exacto (para el lector)."""
+    conn = db_local.connect()
+    try:
+        return producto_repo.buscar_por_codigo(conn, codigo)
+    finally:
+        conn.close()
+
+
 def listar_ubicaciones() -> list[str]:
     conn = db_local.connect()
     try:

@@ -31,7 +31,8 @@ def _num(texto: str) -> Decimal | None:
 
 
 class ProductoDialog(ModalBase):
-    def __init__(self, master, producto: dict | None = None):
+    def __init__(self, master, producto: dict | None = None,
+                 codigo_inicial: str | None = None):
         self.es_edicion = producto is not None
         super().__init__(master, "Editar producto" if self.es_edicion
                          else "Nuevo producto")
@@ -58,7 +59,7 @@ class ProductoDialog(ModalBase):
 
         _fila_entry(0, "Nombre", "nombre", str(p.get("nombre", "")))
         _fila_entry(1, "Código de barra", "codigo_barra",
-                    str(p.get("codigo_barra") or ""))
+                    str(p.get("codigo_barra") or codigo_inicial or ""))
 
         # Categoría: campo con autocompletado (filtra mientras se escribe).
         ctk.CTkLabel(self, text="Categoría", anchor="w").grid(
