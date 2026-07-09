@@ -32,6 +32,11 @@ class _AutocompleteBase:
     hace Enter cuando no hay nada seleccionado (`_enter_sin_seleccion`).
     """
 
+    # Alto aproximado de cada fila (botón 34 + pady) y cuántas se ven a la vez
+    # antes de que el desplegable empiece a scrollear con la rueda del mouse.
+    ALTO_FILA = 37
+    FILAS_VISIBLES = 8
+
     def __init__(self, entry, contenedor, limite: int = 8):
         self.entry = entry
         self.limite = limite
@@ -40,9 +45,11 @@ class _AutocompleteBase:
         self._sel = -1
         self._visible = False
 
-        self.drop = ctk.CTkFrame(contenedor, fg_color=theme.CARD_BG,
-                                 corner_radius=8, border_width=1,
-                                 border_color=theme.GHOST)
+        # Contenedor scrollable: si hay más opciones que FILAS_VISIBLES, se
+        # scrollea con la rueda del mouse en vez de recortar las de abajo.
+        self.drop = ctk.CTkScrollableFrame(
+            contenedor, fg_color=theme.CARD_BG, corner_radius=8,
+            border_width=1, border_color=theme.GHOST)
 
         entry.bind("<KeyRelease>", self._on_key)
         entry.bind("<Down>", self._nav_down)
@@ -88,7 +95,9 @@ class _AutocompleteBase:
         self._render()
 
     def _render(self, auto_sel: bool = True) -> None:
-        for w in self.drop.winfo_children():
+        # Destruir solo las filas propias: el CTkScrollableFrame tiene hijos
+        # internos (canvas + barra) que no hay que tocar.
+        for w in self._filas:
             w.destroy()
         self._filas = []
         if not self._resultados:
@@ -115,8 +124,27 @@ class _AutocompleteBase:
             activo = (i == self._sel)
             f.configure(fg_color=theme.NAV_ACTIVE_BG if activo else "transparent",
                         text_color="#FFFFFF" if activo else theme.TXT)
+        self._scroll_a_seleccion()
+
+    def _scroll_a_seleccion(self) -> None:
+        """Si se navega con las flechas más allá de lo visible, mueve el scroll
+        para que la fila resaltada quede a la vista."""
+        n = len(self._filas)
+        if self._sel < 0 or n <= self.FILAS_VISIBLES:
+            return
+        try:
+            self.drop._parent_canvas.yview_moveto(self._sel / n)
+        except Exception:
+            pass
+
+    def _ajustar_altura(self) -> None:
+        """Alto del desplegable = las filas que entren hasta el tope; el resto
+        queda accesible con el scroll."""
+        visibles = min(len(self._filas), self.FILAS_VISIBLES)
+        self.drop.configure(height=max(1, visibles) * self.ALTO_FILA)
 
     def _mostrar(self) -> None:
+        self._ajustar_altura()
         self.drop.place(in_=self.entry, relx=0, rely=1.0, y=2, relwidth=1.0,
                         anchor="nw")
         self.drop.lift()
@@ -236,7 +264,7 @@ class AutocompleteSimple(_AutocompleteBase):
     """
 
     def __init__(self, entry, contenedor, opciones, on_seleccionar=None,
-                 limite: int = 8, sugerir_al_focus: bool = True):
+                 limite: int = 100, sugerir_al_focus: bool = True):
         super().__init__(entry, contenedor, limite)
         self._opciones = [str(o) for o in opciones]
         self.on_seleccionar = on_seleccionar

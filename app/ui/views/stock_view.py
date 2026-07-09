@@ -25,6 +25,9 @@ class StockView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         self._productos = []
+        # True cuando el campo de escaneo muestra un código ya buscado: el
+        # próximo carácter nuevo arranca un código distinto (no concatena).
+        self._scan_listo = False
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
@@ -70,6 +73,10 @@ class StockView(ctk.CTkFrame):
                            padx=8, pady=(8, 0))
         self.ent_scan.bind("<Return>", self._on_scan)
         self.ent_scan.bind("<KP_Enter>", self._on_scan)
+        # Empezar un código nuevo tras uno ya buscado (pistola o tecleo) limpia
+        # el anterior; vaciar el código a mano limpia también el nombre.
+        self.ent_scan.bind("<Key>", self._scan_nueva_tecla, add="+")
+        self.ent_scan.bind("<KeyRelease>", self._scan_editado, add="+")
 
         # Filtro por ubicación (tercera línea del encabezado): campo con
         # autocompletado que filtra la ubicación mientras se escribe.
@@ -124,11 +131,26 @@ class StockView(ctk.CTkFrame):
 
     def _on_scan(self, _event=None) -> str:
         """Enter en el campo de escaneo: delega en recibir_escaneo. Devuelve
-        'break' para consumir el Enter y que no lo reprocese la captura global."""
+        'break' para consumir el Enter y que no lo reprocese la captura global.
+        No borra el código: si el producto existe, queda a la vista."""
         codigo = self.ent_scan.get().strip()
-        self.ent_scan.delete(0, "end")
         self.recibir_escaneo(codigo)
         return "break"
+
+    def _scan_nueva_tecla(self, event) -> None:
+        """Tras un escaneo ya resuelto, el primer carácter nuevo (otra pistola o
+        tecleo) arranca un código distinto: limpia el anterior para no
+        concatenar. No dispara con Enter ni con teclas de edición/navegación."""
+        if self._scan_listo and event.char and event.char.isprintable():
+            self.ent_scan.delete(0, "end")
+            self._scan_listo = False
+
+    def _scan_editado(self, _event=None) -> None:
+        """Si el usuario vacía el código a mano, limpia también el nombre para no
+        dejar la tabla filtrada por un producto sin código a la vista."""
+        if not self.ent_scan.get().strip() and self.ent_buscar.get().strip():
+            self.ent_buscar.delete(0, "end")
+            self._render_tabla()
 
     def recibir_escaneo(self, codigo: str) -> None:
         """Procesa un código escaneado, venga del campo de escaneo o de la
@@ -141,7 +163,12 @@ class StockView(ctk.CTkFrame):
             return
         prod = stock_service.buscar_por_codigo(codigo)
         if prod is not None:
-            # Existe: filtro la tabla por su nombre para que se vea su stock.
+            # Existe: dejo el código a la vista (por si vino de la captura
+            # global) y filtro la tabla por su nombre para que se vea su stock.
+            # Ambos campos quedan vinculados: borrar el código limpia el nombre.
+            self.ent_scan.delete(0, "end")
+            self.ent_scan.insert(0, codigo)
+            self._scan_listo = True
             self.ent_ubic.delete(0, "end")
             self.ent_buscar.delete(0, "end")
             self.ent_buscar.insert(0, prod.nombre)
@@ -151,6 +178,8 @@ class StockView(ctk.CTkFrame):
             mostrar_toast(self, f"{prod.nombre} · stock {stock_txt}", tipo="ok")
         else:
             # No existe: alta de producto nuevo con el código precargado.
+            self.ent_scan.delete(0, "end")
+            self._scan_listo = False
             datos = ProductoDialog(self, codigo_inicial=codigo).mostrar()
             if datos is not None:
                 try:
