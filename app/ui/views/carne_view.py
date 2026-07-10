@@ -12,7 +12,7 @@ import customtkinter as ctk
 
 from app.core import formato
 
-from app.models.res import ABIERTA
+from app.models.res import ABIERTA, CUENTA_CORRIENTE
 from app.services import despiece_service as ds
 from app.ui import theme
 from app.ui.toast import mostrar_toast
@@ -132,12 +132,19 @@ class CarneView(ctk.CTkFrame):
         ctk.CTkLabel(gan, text=_money(g), font=theme.fuente(15, "bold"),
                      text_color=theme.VERDE if g >= 0 else theme.ROJO).pack()
 
-        ctk.CTkButton(card, text="Abrir  →", width=100, height=36, corner_radius=8,
+        acc = ctk.CTkFrame(card, fg_color="transparent")
+        acc.grid(row=0, column=3, padx=(6, 16))
+        ctk.CTkButton(acc, text="Abrir  →", width=100, height=36, corner_radius=8,
                       font=theme.fuente(14), fg_color="transparent",
                       text_color=theme.ACCENT, border_width=1,
                       border_color=theme.GHOST, hover_color=theme.GHOST,
-                      command=lambda rid=res.id: self._abrir_res(rid)).grid(
-            row=0, column=3, padx=(6, 16))
+                      command=lambda rid=res.id: self._abrir_res(rid)).pack(
+            side="left", padx=(0, 6))
+        ctk.CTkButton(acc, text="🗑", width=40, height=36, corner_radius=8,
+                      font=theme.fuente(15), fg_color="transparent",
+                      text_color=theme.ROJO, border_width=1,
+                      border_color=theme.GHOST, hover_color=theme.GHOST,
+                      command=lambda r=res: self._eliminar_res(r)).pack(side="left")
 
     def _badge_estado(self, parent, estado):
         abierta = estado == ABIERTA
@@ -426,6 +433,23 @@ class CarneView(ctk.CTkFrame):
             return
         mostrar_toast(self, "Res creada", tipo="ok")
         self._abrir_res(res_id)
+
+    def _eliminar_res(self, res) -> None:
+        cc = res.condicion == CUENTA_CORRIENTE
+        extra = ("\nComo era a cuenta corriente, se le va a descontar la deuda "
+                 "al proveedor." if cc else "")
+        if not notificar.confirmar(
+                self, "Eliminar res",
+                f"¿Eliminar «{res.descripcion}» con todas sus piezas y cortes?"
+                f"{extra}\nEsta acción no se puede deshacer."):
+            return
+        try:
+            ds.eliminar_res(res.id)
+        except ds.DespieceError as e:
+            notificar.error(self, "No se pudo eliminar", str(e))
+            return
+        mostrar_toast(self, "Res eliminada", tipo="ok")
+        self._ir_a_lista()
 
     def _cerrar_res(self) -> None:
         if not notificar.confirmar(

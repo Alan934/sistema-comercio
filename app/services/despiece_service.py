@@ -127,6 +127,37 @@ def cerrar_res(res_id: str) -> None:
         conn.close()
 
 
+def eliminar_res(res_id: str) -> None:
+    """Elimina una res cargada por error, con sus piezas y cortes. Solo se
+    permite si NINGUNA pieza se confirmó (todavía no cargó stock). Si era a
+    cuenta corriente, revierte la deuda que había sumado al proveedor. Todo en
+    una sola transacción."""
+    conn = db_local.connect()
+    try:
+        with conn:
+            res = res_repo.obtener(conn, res_id)
+            if res is None:
+                raise DespieceError("La res no existe.")
+            if corte_repo.hay_confirmados_por_res(conn, res_id):
+                raise DespieceError(
+                    "Esta res ya tiene piezas confirmadas (cargó stock); "
+                    "no se puede eliminar.")
+            # Revertir la deuda del proveedor si la res era a cuenta corriente.
+            if res.condicion == CUENTA_CORRIENTE and res.proveedor_id:
+                cuenta_repo.registrar_movimiento(
+                    conn, entidad_tipo="PROVEEDOR", entidad_id=res.proveedor_id,
+                    tipo=cuenta_repo.HABER, monto=res.costo_total,
+                    referencia_tipo="RES", referencia_id=res.id,
+                    nota=f"Anulación de {res.descripcion}")
+            # Borrar cortes -> piezas -> res (respeta las FK).
+            for pieza in pieza_repo.listar_por_res(conn, res_id):
+                corte_repo.eliminar_por_pieza(conn, pieza.id)
+            pieza_repo.eliminar_por_res(conn, res_id)
+            res_repo.eliminar(conn, res_id)
+    finally:
+        conn.close()
+
+
 def listar_reses(solo_abiertas: bool = False) -> list[Res]:
     conn = db_local.connect()
     try:

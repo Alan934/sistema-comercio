@@ -66,6 +66,12 @@ def cambiar_estado(conn: sqlite3.Connection, res_id: str, estado: str) -> None:
     )
 
 
+def eliminar(conn: sqlite3.Connection, res_id: str) -> None:
+    """Borra físicamente la cabecera de la res. Las piezas y cortes se borran
+    aparte (antes) para no dejar huérfanos."""
+    conn.execute("DELETE FROM reses WHERE id = ?", (res_id,))
+
+
 def obtener(conn: sqlite3.Connection, res_id: str) -> Res | None:
     row = conn.execute("SELECT * FROM reses WHERE id = ?", (res_id,)).fetchone()
     return _to_res(row) if row else None

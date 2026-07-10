@@ -90,7 +90,7 @@ class CategoriasManager(ModalBase):
         ctk.CTkLabel(encab, text="Margen", width=110, anchor="e",
                      font=theme.fuente(12, "bold"), text_color=theme.TXT_MUTED).grid(
             row=0, column=1, padx=4)
-        ctk.CTkLabel(encab, text="", width=70).grid(row=0, column=2, padx=4)
+        ctk.CTkLabel(encab, text="", width=180).grid(row=0, column=2, padx=4)
 
         self.lista = ctk.CTkScrollableFrame(self, width=440, height=320,
                                             fg_color=theme.CARD_BG, corner_radius=12)
@@ -119,11 +119,16 @@ class CategoriasManager(ModalBase):
                          font=theme.fuente(15)).grid(row=0, column=0, sticky="w", padx=4)
             ctk.CTkLabel(f, text=margen, width=110, anchor="e",
                          text_color=theme.TXT_MUTED).grid(row=0, column=1, padx=4)
-            ctk.CTkButton(f, text="Editar", width=70, height=30,
+            acc = ctk.CTkFrame(f, fg_color="transparent")
+            acc.grid(row=0, column=2, padx=4)
+            ctk.CTkButton(acc, text="✏  Editar", width=80, height=30,
                           fg_color="transparent", text_color=theme.ACCENT,
                           hover_color=theme.GHOST,
-                          command=lambda c=cat: self._editar(c)).grid(
-                row=0, column=2, padx=4)
+                          command=lambda c=cat: self._editar(c)).pack(side="left", padx=1)
+            ctk.CTkButton(acc, text="🗑  Eliminar", width=90, height=30,
+                          fg_color="transparent", text_color=theme.ROJO,
+                          hover_color=theme.GHOST,
+                          command=lambda c=cat: self._eliminar(c)).pack(side="left", padx=1)
 
     def _nueva(self) -> None:
         datos = CategoriaForm(self).mostrar()
@@ -145,5 +150,17 @@ class CategoriasManager(ModalBase):
                                          datos["margen_pct"])
         except categoria_service.CategoriaError as e:
             notificar.error(self, "No se pudo guardar", str(e))
+            return
+        self._recargar()
+
+    def _eliminar(self, categoria) -> None:
+        if not notificar.confirmar(
+                self, "Eliminar categoría",
+                f"¿Eliminar la categoría «{categoria.nombre}»?"):
+            return
+        try:
+            categoria_service.eliminar(categoria.id)
+        except categoria_service.CategoriaError as e:
+            notificar.error(self, "No se pudo eliminar", str(e))
             return
         self._recargar()

@@ -28,12 +28,12 @@ class UsuarioDialog(ModalBase):
         ctk.CTkLabel(self, text="Contraseña nueva" if self.edicion
                      else "Contraseña", anchor="w").grid(
             row=1, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_pass = ctk.CTkEntry(self, width=240, show="•")
+        self.ent_pass = self._password_con_ojo()
         self.ent_pass.grid(row=1, column=1, padx=(8, 20), pady=6)
 
         ctk.CTkLabel(self, text="Repetir contraseña", anchor="w").grid(
             row=2, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_pass2 = ctk.CTkEntry(self, width=240, show="•")
+        self.ent_pass2 = self._password_con_ojo()
         self.ent_pass2.grid(row=2, column=1, padx=(8, 20), pady=6)
 
         # Selección de rol: solo al crear y si hay más de una opción.
@@ -72,6 +72,26 @@ class UsuarioDialog(ModalBase):
                       command=self._confirmar).pack(side="left", padx=8)
         self._pie_atajos(grid_row=99)
         self.after(50, self.ent_user.focus_set)
+
+    def _password_con_ojo(self) -> ctk.CTkEntry:
+        """Campo de contraseña con botón de ojito para mostrar/ocultar lo
+        escrito, igual que en la pantalla de login."""
+        ent = ctk.CTkEntry(self, width=240, show="•")
+        ojo = ctk.CTkButton(ent, text="👁", width=30, height=26, corner_radius=6,
+                            fg_color="transparent", hover_color=theme.GHOST,
+                            text_color=theme.TXT_MUTED, font=theme.fuente(14))
+
+        def alternar() -> None:
+            if ent.cget("show"):          # oculta -> mostrar
+                ent.configure(show="")
+                ojo.configure(text="🙈")
+            else:                         # visible -> ocultar
+                ent.configure(show="•")
+                ojo.configure(text="👁")
+
+        ojo.configure(command=alternar)
+        ojo.place(relx=1.0, rely=0.5, x=-4, anchor="e")
+        return ent
 
     def _rol_elegido(self) -> str:
         if self.edicion:

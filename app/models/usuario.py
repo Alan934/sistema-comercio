@@ -37,14 +37,21 @@ def roles_que_puede_crear(rol_actor: str) -> list[str]:
 
 
 def puede_gestionar(rol_actor: str, rol_objetivo: str) -> bool:
-    """True si `rol_actor` puede editar o desactivar a un usuario con
-    `rol_objetivo`. El super admin gestiona administradores y empleados; el
-    admin solo empleados. Nadie gestiona a otro super admin desde la interfaz."""
+    """True si `rol_actor` puede desactivar a un usuario con `rol_objetivo`. El
+    super admin gestiona administradores y empleados; el admin solo empleados.
+    Nadie gestiona a otro super admin desde la interfaz."""
     if rol_actor == SUPER_ADMIN:
         return rol_objetivo in (ADMIN, EMPLEADO)
     if rol_actor == ADMIN:
         return rol_objetivo == EMPLEADO
     return False
+
+
+def puede_editar_credenciales(rol_actor: str, rol_objetivo: str) -> bool:
+    """True si `rol_actor` puede cambiar el usuario y la contraseña de otro
+    usuario. Solo el super administrador puede, y sobre administradores y
+    empleados."""
+    return rol_actor == SUPER_ADMIN and rol_objetivo in (ADMIN, EMPLEADO)
 
 
 @dataclass

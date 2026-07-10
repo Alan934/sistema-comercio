@@ -157,6 +157,12 @@ def ids_por_categoria(conn: sqlite3.Connection, categoria_id: str) -> list[str]:
         "SELECT id FROM productos WHERE categoria_id = ?", (categoria_id,)).fetchall()]
 
 
+def contar_activos_por_categoria(conn: sqlite3.Connection, categoria_id: str) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM productos WHERE categoria_id = ? AND activo = 1",
+        (categoria_id,)).fetchone()["n"]
+
+
 def recalcular_precio(conn: sqlite3.Connection, producto_id: str) -> None:
     """Recalcula precio_venta = costo * (1 + margen/100) usando el margen
     efectivo (producto o, si no tiene, su categoría). Si no hay margen en

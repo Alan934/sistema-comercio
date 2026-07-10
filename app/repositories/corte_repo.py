@@ -78,6 +78,22 @@ def eliminar(conn: sqlite3.Connection, corte_id: str) -> None:
     conn.execute("DELETE FROM cortes WHERE id = ?", (corte_id,))
 
 
+def eliminar_por_pieza(conn: sqlite3.Connection, pieza_id: str) -> None:
+    """Borra todos los cortes de una pieza (al eliminar una res no confirmada)."""
+    conn.execute("DELETE FROM cortes WHERE pieza_id = ?", (pieza_id,))
+
+
+def hay_confirmados_por_res(conn: sqlite3.Connection, res_id: str) -> bool:
+    """True si algún corte de la res ya se confirmó (cargó stock). Sirve para
+    impedir eliminar una res que ya movió stock."""
+    row = conn.execute(
+        """SELECT 1 FROM cortes c
+           JOIN piezas p ON p.id = c.pieza_id
+           WHERE p.res_id = ? AND c.confirmado = 1 LIMIT 1""",
+        (res_id,)).fetchone()
+    return row is not None
+
+
 def obtener(conn: sqlite3.Connection, corte_id: str) -> Corte | None:
     row = conn.execute("SELECT * FROM cortes WHERE id = ?", (corte_id,)).fetchone()
     return _to_corte(row) if row else None

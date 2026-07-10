@@ -40,6 +40,25 @@ def actualizar(categoria_id: str, nombre: str,
         conn.close()
 
 
+def eliminar(categoria_id: str) -> None:
+    """Elimina (borrado lógico) una categoría. Se rechaza si todavía tiene
+    productos activos, para no dejarlos sin categoría; primero hay que
+    reasignarlos o darlos de baja."""
+    conn = db_local.connect()
+    try:
+        with conn:
+            if categoria_repo.obtener(conn, categoria_id) is None:
+                raise CategoriaError("La categoría no existe.")
+            n = producto_repo.contar_activos_por_categoria(conn, categoria_id)
+            if n > 0:
+                raise CategoriaError(
+                    f"La categoría tiene {n} producto(s). Reasignalos o dalos de "
+                    "baja antes de eliminarla.")
+            categoria_repo.eliminar(conn, categoria_id)
+    finally:
+        conn.close()
+
+
 def listar_activas() -> list[Categoria]:
     conn = db_local.connect()
     try:

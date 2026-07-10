@@ -5,7 +5,7 @@ El super admin gestiona administradores y empleados; el admin, solo empleados.
 import customtkinter as ctk
 
 from app.models.usuario import (etiqueta_rol, puede_gestionar,
-                                roles_que_puede_crear)
+                                puede_editar_credenciales, roles_que_puede_crear)
 from app.services import usuario_service
 from app.ui import theme
 from app.ui.toast import mostrar_toast
@@ -73,19 +73,24 @@ class UsuariosView(ctk.CTkFrame):
             if u.id == self.usuario_actual.id:
                 ctk.CTkLabel(acciones, text="(vos)", width=110, anchor="center",
                              text_color=theme.TXT_MUTED).pack(side="left")
-            elif puede_gestionar(self.usuario_actual.rol, u.rol):
-                ctk.CTkButton(
-                    acciones, text="✏  Editar", width=100, height=32,
-                    corner_radius=8, font=theme.fuente(13), fg_color="transparent",
-                    text_color=theme.TXT_MUTED, hover_color=theme.GHOST,
-                    command=lambda usr=u: self._editar(usr)).pack(
-                    side="left", padx=(0, 4))
-                ctk.CTkButton(
-                    acciones, text="🚫  Desactivar", width=130, height=32,
-                    corner_radius=8, font=theme.fuente(13), fg_color="transparent",
-                    text_color=theme.ROJO, hover_color=theme.GHOST,
-                    command=lambda uid=u.id, n=u.username:
-                    self._desactivar(uid, n)).pack(side="left")
+            else:
+                # Solo el super admin cambia usuario y contraseña de otros.
+                if puede_editar_credenciales(self.usuario_actual.rol, u.rol):
+                    ctk.CTkButton(
+                        acciones, text="✏  Editar", width=100, height=32,
+                        corner_radius=8, font=theme.fuente(13),
+                        fg_color="transparent", text_color=theme.TXT_MUTED,
+                        hover_color=theme.GHOST,
+                        command=lambda usr=u: self._editar(usr)).pack(
+                        side="left", padx=(0, 4))
+                if puede_gestionar(self.usuario_actual.rol, u.rol):
+                    ctk.CTkButton(
+                        acciones, text="🚫  Desactivar", width=130, height=32,
+                        corner_radius=8, font=theme.fuente(13),
+                        fg_color="transparent", text_color=theme.ROJO,
+                        hover_color=theme.GHOST,
+                        command=lambda uid=u.id, n=u.username:
+                        self._desactivar(uid, n)).pack(side="left")
 
     def _nuevo(self) -> None:
         roles = roles_que_puede_crear(self.usuario_actual.rol)
@@ -104,14 +109,16 @@ class UsuariosView(ctk.CTkFrame):
         mostrar_toast(self, "Usuario creado", tipo="ok")
 
     def _editar(self, usuario) -> None:
-        if not puede_gestionar(self.usuario_actual.rol, usuario.rol):
+        if not puede_editar_credenciales(self.usuario_actual.rol, usuario.rol):
             return
         datos = UsuarioDialog(self, [], usuario=usuario).mostrar()
         if datos is None:
             return
         try:
             usuario_service.editar(usuario.id, datos["username"],
-                                   datos["password"])
+                                   datos["password"],
+                                   rol_actor=self.usuario_actual.rol,
+                                   rol_objetivo=usuario.rol)
         except usuario_service.UsuarioError as e:
             notificar.error(self, "No se pudo guardar", str(e))
             return

@@ -2,7 +2,7 @@
 from app.core import auth, db_local
 from app.core.utils import nuevo_id
 from app.models.usuario import (Usuario, SUPER_ADMIN, ADMIN, EMPLEADO,
-                                roles_que_puede_crear)
+                                roles_que_puede_crear, puede_editar_credenciales)
 from app.repositories import usuario_repo
 
 
@@ -60,9 +60,15 @@ def crear(rol_actor: str, username: str, password: str, rol: str) -> str:
     return _crear(username, password, rol)
 
 
-def editar(usuario_id: str, username: str, password: str | None = None) -> None:
+def editar(usuario_id: str, username: str, password: str | None = None,
+           rol_actor: str | None = None, rol_objetivo: str | None = None) -> None:
     """Actualiza el nombre de usuario y, si se pasa contraseña, la cambia.
-    Un `password` vacío o None deja la contraseña como estaba."""
+    Un `password` vacío o None deja la contraseña como estaba. Si se pasa
+    `rol_actor`, valida que solo el super admin cambie credenciales de otros."""
+    if rol_actor is not None and not puede_editar_credenciales(rol_actor,
+                                                               rol_objetivo):
+        raise UsuarioError(
+            "Solo el super administrador puede cambiar el usuario y la contraseña.")
     username = (username or "").strip()
     if not username:
         raise UsuarioError("El usuario necesita un nombre.")

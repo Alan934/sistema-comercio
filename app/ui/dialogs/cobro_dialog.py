@@ -84,17 +84,20 @@ class CobroDialog(ModalBase):
             ent = ctk.CTkEntry(fila, width=140, height=40, justify="right",
                                font=theme.fuente(18), placeholder_text="0",
                                corner_radius=8)
-            ent.grid(row=0, column=2, rowspan=2 if ayuda else 1, padx=(8, 14),
+            ent.grid(row=0, column=2, rowspan=2 if ayuda else 1, padx=(8, 8),
                      pady=10)
             ent.bind("<KeyRelease>", self._recalcular)
             self.entries[clave] = ent
 
-        ctk.CTkButton(cuerpo, text="Efectivo exacto", height=32,
-                      corner_radius=8, fg_color="transparent",
-                      text_color=theme.ACCENT, border_width=1,
-                      border_color=theme.GHOST, hover_color=theme.GHOST,
-                      command=self._efectivo_exacto).grid(
-            row=len(filas), column=0, sticky="e", pady=(6, 2))
+            # Botón que rellena ESTE campo con lo que falta para el total.
+            ctk.CTkButton(
+                fila, text="= Total", width=72, height=40, corner_radius=8,
+                font=theme.fuente(12, "bold"), fg_color="transparent",
+                text_color=theme.ACCENT, border_width=1,
+                border_color=theme.GHOST, hover_color=theme.GHOST,
+                command=lambda c=clave: self._completar_campo(c)).grid(
+                row=0, column=3, rowspan=2 if ayuda else 1, padx=(0, 14),
+                pady=10)
 
         # Fila de cliente: oculta hasta que haya monto en Fiado.
         self.fila_cliente = ctk.CTkFrame(self, fg_color="transparent")
@@ -199,13 +202,14 @@ class CobroDialog(ModalBase):
         else:
             self._set_estado("✓  Pago completo", "#FFFFFF", theme.VERDE)
 
-    def _efectivo_exacto(self) -> None:
+    def _completar_campo(self, clave: str) -> None:
+        """Rellena `clave` con lo que falta para el total según los demás campos."""
         v = self._leer()
         if v is None:
             return
-        otros = v[TRANSFERENCIA] + v[TARJETA] + v[FIADO]
+        otros = sum((valor for k, valor in v.items() if k != clave), CERO)
         falta = self.total - otros
-        ent = self.entries["efectivo"]
+        ent = self.entries[clave]
         ent.delete(0, "end")
         ent.insert(0, f"{max(falta, CERO):.2f}")
         self._recalcular()

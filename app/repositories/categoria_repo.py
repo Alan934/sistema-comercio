@@ -37,6 +37,16 @@ def actualizar(conn: sqlite3.Connection, categoria_id: str, nombre: str,
     )
 
 
+def eliminar(conn: sqlite3.Connection, categoria_id: str) -> None:
+    """Borrado lógico: marca la categoría como inactiva (activo=0). La deja de
+    listar y la sincroniza a la nube (que también respeta `activo`)."""
+    conn.execute(
+        "UPDATE categorias SET activo = 0, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
+        (ahora_iso(), categoria_id),
+    )
+
+
 # --- Sincronización del catálogo (local <-> nube) --------------------------
 
 def obtener_pendientes_sync(conn: sqlite3.Connection) -> list[sqlite3.Row]:

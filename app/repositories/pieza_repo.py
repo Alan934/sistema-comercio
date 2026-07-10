@@ -59,6 +59,12 @@ def cambiar_estado(conn: sqlite3.Connection, pieza_id: str, estado: str) -> None
     )
 
 
+def eliminar_por_res(conn: sqlite3.Connection, res_id: str) -> None:
+    """Borra todas las piezas de una res (al eliminar una res no confirmada).
+    Los cortes de cada pieza se borran aparte antes de esto."""
+    conn.execute("DELETE FROM piezas WHERE res_id = ?", (res_id,))
+
+
 def obtener(conn: sqlite3.Connection, pieza_id: str) -> Pieza | None:
     row = conn.execute("SELECT * FROM piezas WHERE id = ?", (pieza_id,)).fetchone()
     return _to_pieza(row) if row else None
