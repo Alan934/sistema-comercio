@@ -90,6 +90,13 @@ class AppWindow(ctk.CTk):
         iconos = {"caja": "🛒", "stock": "📦", "carne": "🥩", "proveedores": "🚚",
                   "clientes": "👥", "reportes": "📊", "cierres": "💰",
                   "usuarios": "👤"}
+        # Atajos de teclado para saltar entre secciones (Ctrl+1..8). La tecla es
+        # fija por sección (no depende del rol), así la memoria muscular no cambia
+        # aunque un rol tenga menos secciones. Se muestran en el botón y se
+        # enlazan más abajo.
+        atajos = {"caja": "1", "stock": "2", "carne": "3", "proveedores": "4",
+                  "clientes": "5", "reportes": "6", "cierres": "7",
+                  "usuarios": "8"}
         secciones = SECCIONES_POR_ROL.get(usuario.rol, ["caja"])
 
         # Bandera anti-doble-click: mientras una sección se está cargando
@@ -98,6 +105,7 @@ class AppWindow(ctk.CTk):
 
         self._vistas = {}
         self._botones = {}
+        self._hints = {}
         for clave in secciones:
             vista = constructores[clave]()
             vista.grid(row=0, column=0, sticky="nsew")
@@ -110,6 +118,25 @@ class AppWindow(ctk.CTk):
                 command=lambda k=clave: self.mostrar(k))
             btn.pack(fill="x", padx=12, pady=3)
             self._botones[clave] = btn
+            # Pista del atajo, alineada a la derecha del botón. El fondo se pinta
+            # explícito (no "transparent"): sobre el botón, "transparent" se
+            # resuelve al color del marco de la barra lateral y no al color que
+            # el botón dibuja encima, así que en el botón activo quedaba un
+            # recuadro oscuro. Lo mantenemos igual al color del botón por estado.
+            hint = ctk.CTkLabel(btn, text=f"Ctrl+{atajos[clave]}",
+                                font=theme.fuente(11), fg_color=theme.SIDEBAR_BG,
+                                text_color=theme.NAV_TXT_INACT)
+            hint.place(relx=1.0, rely=0.5, anchor="e", x=-12)
+            hint.bind("<Button-1>", lambda _e, k=clave: self.mostrar(k))
+            # El botón cambia de color al pasar el mouse; la pista lo acompaña.
+            btn.bind("<Enter>", lambda _e, k=clave: self._hint_hover(k, True))
+            btn.bind("<Leave>", lambda _e, k=clave: self._hint_hover(k, False))
+            self._hints[clave] = hint
+            # Atajo de teclado: Ctrl+N salta a esta sección desde cualquier
+            # lado. Usamos <Control-Key-N> (y no <Control-N>, que en Tk sería
+            # Ctrl+click del botón 1 del mouse).
+            self.bind(f"<Control-Key-{atajos[clave]}>",
+                      lambda _e, k=clave: self.mostrar(k))
 
         # --- Pie: usuario, cerrar sesión, tema, versión y actualización ---
         self.btn_update = ctk.CTkButton(
@@ -198,9 +225,13 @@ class AppWindow(ctk.CTk):
                 if k == clave:
                     btn.configure(fg_color=theme.NAV_ACTIVE_BG,
                                   text_color="#FFFFFF")
+                    self._hints[k].configure(fg_color=theme.NAV_ACTIVE_BG,
+                                             text_color="#FFFFFF")
                 else:
                     btn.configure(fg_color="transparent",
                                   text_color=theme.NAV_TXT_INACT)
+                    self._hints[k].configure(fg_color=theme.SIDEBAR_BG,
+                                             text_color=theme.NAV_TXT_INACT)
             self._overlay_lbl.configure(
                 text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
             self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -222,6 +253,15 @@ class AppWindow(ctk.CTk):
             # después liberamos la bandera.
             self.update()
             self._cargando = False
+
+    def _hint_hover(self, clave: str, entrando: bool) -> None:
+        """Acompaña el hover del botón: pinta el fondo de la pista con el color
+        de hover al entrar y lo devuelve al de la barra al salir. El botón
+        activo conserva su fondo resaltado (no reacciona al hover)."""
+        if clave == getattr(self, "_activa", None):
+            return
+        self._hints[clave].configure(
+            fg_color=theme.NAV_HOVER if entrando else theme.SIDEBAR_BG)
 
     def _toggle_tema(self) -> None:
         nuevo = "dark" if ctk.get_appearance_mode().lower() == "light" else "light"

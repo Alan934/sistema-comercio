@@ -116,7 +116,7 @@ class VentasView(ctk.CTkFrame):
         botonera = ctk.CTkFrame(panel, fg_color="transparent")
         botonera.grid(row=4, column=0, sticky="ew", padx=16, pady=16)
         botonera.grid_columnconfigure(0, weight=1)
-        ctk.CTkButton(botonera, text="Cobrar", height=50, corner_radius=10,
+        ctk.CTkButton(botonera, text="Cobrar (F12)", height=50, corner_radius=10,
                       font=theme.fuente(18, "bold"), fg_color=theme.PRIMARY,
                       hover_color=theme.PRIMARY_HOVER,
                       command=self._cobrar).grid(row=0, column=0, sticky="ew")
