@@ -189,18 +189,21 @@ class RemitoDialog(ModalBase):
             on_enter_directo=self._on_scan,
             buscar_codigo_fn=venta_service.buscar_por_codigo)
 
-        # Encabezado de columnas.
+        # Encabezado de columnas. La columna "Producto" (1) se estira; el resto
+        # queda a ancho fijo, así la columna del ✕ siempre está pegada a la derecha.
         cabecera = ctk.CTkFrame(self, fg_color="transparent")
-        cabecera.grid(row=2, column=0, sticky="ew", padx=20, pady=(4, 0))
+        cabecera.grid(row=2, column=0, sticky="ew", padx=16, pady=(4, 0))
+        cabecera.grid_columnconfigure(1, weight=1)
         for col, (txt, w) in enumerate(
-                [("Cant.", 60), ("Producto", 230), ("Costo unit.", 110),
+                [("Cant.", 60), ("Producto", 180), ("Costo unit.", 110),
                  ("Subtotal", 100), ("", 40)]):
             ctk.CTkLabel(cabecera, text=txt, width=w, anchor="w",
                          font=theme.fuente(12, "bold"),
-                         text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
+                         text_color=theme.TXT_MUTED).grid(
+                row=0, column=col, padx=4, sticky="ew")
 
         # Lista de renglones.
-        self.lista = ctk.CTkScrollableFrame(self, width=560, height=220,
+        self.lista = ctk.CTkScrollableFrame(self, width=600, height=220,
                                             fg_color=theme.CARD_BG, corner_radius=12)
         self.lista.grid(row=3, column=0, sticky="nsew", padx=16, pady=6)
         self.grid_rowconfigure(3, weight=1)
@@ -263,10 +266,11 @@ class RemitoDialog(ModalBase):
             venc = f"  · vence {item.fecha_vencimiento}" if item.fecha_vencimiento else ""
             fila = ctk.CTkFrame(self.lista, fg_color="transparent")
             fila.pack(fill="x", padx=8, pady=2)
+            fila.grid_columnconfigure(1, weight=1)
             ctk.CTkLabel(fila, text=formato.numero(item.cantidad), width=60,
                          anchor="w").grid(row=0, column=0, padx=4)
-            ctk.CTkLabel(fila, text=f"{nombre}{venc}", width=230,
-                         anchor="w").grid(row=0, column=1, padx=4)
+            ctk.CTkLabel(fila, text=f"{nombre}{venc}", width=180,
+                         anchor="w").grid(row=0, column=1, padx=4, sticky="ew")
             ctk.CTkLabel(fila, text=f"{formato.moneda(item.costo_unitario)}", width=110,
                          anchor="w").grid(row=0, column=2, padx=4)
             ctk.CTkLabel(fila, text=f"{formato.moneda(item.subtotal)}", width=100,

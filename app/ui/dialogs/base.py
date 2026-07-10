@@ -15,7 +15,9 @@ class ModalBase(ctk.CTkToplevel):
         self.withdraw()
         self.resultado = None
         self.title(titulo)
-        self.resizable(False, False)
+        # Se puede agrandar/achicar; el tamaño mínimo (= el contenido) se fija
+        # en _centrar(), así nunca se recorta pero la usuaria puede ampliar.
+        self.resizable(True, True)
         # Se asocia a la ventana principal y bloquea el cierre por la X.
         self.transient(master.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancelar)
@@ -52,13 +54,22 @@ class ModalBase(ctk.CTkToplevel):
         return lbl
 
     def _centrar(self) -> None:
-        """Posiciona la ventana en el centro de la pantalla según su tamaño."""
+        """Abre la ventana centrada y a la medida exacta de su contenido.
+
+        El tamaño pedido (winfo_req*) es lo que el contenido necesita para verse
+        completo. Se usa como tamaño inicial y como mínimo (minsize), de modo que
+        nada quede recortado en ninguna resolución; la usuaria puede agrandarla
+        pero no achicarla por debajo de su contenido."""
         self.update_idletasks()
         w = self.winfo_reqwidth()
         h = self.winfo_reqheight()
+        # No dejar que la ventana supere la pantalla (resoluciones chicas).
+        w = min(w, self.winfo_screenwidth())
+        h = min(h, self.winfo_screenheight() - 40)
+        self.minsize(w, h)
         x = max(0, (self.winfo_screenwidth() - w) // 2)
         y = max(0, (self.winfo_screenheight() - h) // 2)
-        self.geometry(f"+{x}+{y}")
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
     def _auto_limpiar_error(self) -> None:
         """Si el diálogo tiene un label `self.lbl_error`, hace que se borre en

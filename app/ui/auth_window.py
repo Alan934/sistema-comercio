@@ -20,7 +20,8 @@ class AuthWindow(ctk.CTk):
 
         titulo = "Crear super administrador" if self._setup else "Iniciar sesión"
         self.title(f"{settings.APP_NOMBRE} — {titulo}")
-        self.resizable(False, False)
+        # Se puede agrandar si en alguna resolución/escala se ve chica.
+        self.resizable(True, True)
         self.configure(fg_color=theme.APP_BG)
         self._centrar(420, 560 if self._setup else 500)
 
@@ -120,6 +121,8 @@ class AuthWindow(ctk.CTk):
         return ent
 
     def _centrar(self, w: int, h: int) -> None:
+        # No achicar por debajo del contenido: es el mínimo, se puede agrandar.
+        self.minsize(w, h)
         x = max(0, (self.winfo_screenwidth() - w) // 2)
         y = max(0, (self.winfo_screenheight() - h) // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
