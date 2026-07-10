@@ -24,6 +24,7 @@ class ItemCarrito:
     costo_unitario: Decimal    # snapshot para calcular ganancia
     es_pesable: bool
     controla_stock: bool
+    controla_vencimiento: bool = False   # perecedero: consume lotes por FEFO
 
     @property
     def subtotal(self) -> Decimal:
@@ -55,6 +56,7 @@ class Carrito:
             costo_unitario=producto.costo_compra,
             es_pesable=producto.es_pesable,
             controla_stock=producto.controla_stock,
+            controla_vencimiento=producto.controla_vencimiento,
         )
         self.items.append(item)
         return item

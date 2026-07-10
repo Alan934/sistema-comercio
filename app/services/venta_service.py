@@ -8,7 +8,7 @@ from app.core.utils import ahora_iso, ahora_local, nuevo_id
 from app.models.carrito import Carrito
 from app.models.producto import Producto
 from app.models.venta import Venta, Pago, FIADO, METODOS_PAGO
-from app.repositories import producto_repo, venta_repo, cuenta_repo
+from app.repositories import producto_repo, venta_repo, cuenta_repo, lote_repo
 
 
 class VentaError(Exception):
@@ -82,6 +82,10 @@ def registrar_venta(carrito: Carrito, pagos: list[Pago],
                     producto_repo.descontar_stock(
                         conn, it.producto_id, it.cantidad,
                         referencia_id=venta.id)
+                if it.controla_vencimiento:
+                    # Perecedero: descuenta primero del lote que vence antes.
+                    lote_repo.consumir_fefo(
+                        conn, it.producto_id, it.cantidad)
             if monto_fiado > 0:
                 cuenta_repo.registrar_movimiento(
                     conn,

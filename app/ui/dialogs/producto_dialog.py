@@ -97,10 +97,16 @@ class ProductoDialog(ModalBase):
         self._auto_ubic = AutocompleteSimple(
             self.ent_ubicacion, self, stock_service.listar_ubicaciones())
 
-        fila = 8
-        if not self.es_edicion:
+        # Stock editable: en el alta es el stock inicial; en la edición permite
+        # corregir el stock actual (queda como movimiento de AJUSTE). La vista
+        # de Stock solo la ven admin/superadmin, así que la acción ya está
+        # restringida por el acceso a la pantalla.
+        if self.es_edicion:
+            _fila_entry(8, "Stock actual", "stock_actual",
+                        str(p.get("stock_actual", "0")))
+        else:
             _fila_entry(8, "Stock inicial", "stock_actual", "0")
-            fila = 9
+        fila = 9
 
         self.lbl_hint = ctk.CTkLabel(self, text="", text_color=theme.TXT_MUTED,
                                      font=theme.fuente(12), anchor="w")
@@ -239,11 +245,12 @@ class ProductoDialog(ModalBase):
             "controla_stock": bool(self.var_stock.get()),
             **numericos,
         }
-        if not self.es_edicion:
-            v = _num(self._entries["stock_actual"].get())
-            if v is None:
-                self.lbl_error.configure(text="⚠ Stock inicial inválido")
-                return
-            datos["stock_actual"] = str(v)
+        v = _num(self._entries["stock_actual"].get())
+        if v is None:
+            self.lbl_error.configure(
+                text="⚠ Stock inválido" if self.es_edicion
+                else "⚠ Stock inicial inválido")
+            return
+        datos["stock_actual"] = str(v)
 
         self._aceptar(datos)

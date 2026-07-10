@@ -107,13 +107,25 @@ def crear_producto(datos: dict) -> str:
 
 
 def actualizar_producto(producto_id: str, datos: dict) -> None:
-    """Edita un producto existente (no cambia el stock_actual)."""
+    """Edita un producto existente. Si `datos` trae stock_actual, ajusta el
+    stock a ese valor dejando el movimiento (AJUSTE) para que se sincronice;
+    si no lo trae, no toca el stock."""
     completo = _normalizar({**datos, "id": producto_id}, con_id=True)
+    ajusta_stock = datos.get("stock_actual") is not None
+    if ajusta_stock:
+        try:
+            nuevo_stock = Decimal(str(datos["stock_actual"]).replace(",", "."))
+        except (ArithmeticError, ValueError):
+            raise StockError("Stock inválido.")
+        if nuevo_stock < 0:
+            raise StockError("El stock no puede ser negativo.")
     conn = db_local.connect()
     try:
         with conn:
             _aplicar_margen(conn, completo)
             producto_repo.actualizar(conn, completo)
+            if ajusta_stock:
+                producto_repo.ajustar_stock(conn, producto_id, nuevo_stock)
     finally:
         conn.close()
 

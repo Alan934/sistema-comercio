@@ -1,6 +1,7 @@
 """Acceso a datos de lotes (control de vencimientos de perecederos)."""
 import sqlite3
 from datetime import date, timedelta
+from decimal import Decimal
 
 from app.core.utils import ahora_iso, nuevo_id
 
@@ -42,6 +43,42 @@ def listar_activos(conn: sqlite3.Connection, producto_id: str) -> list[sqlite3.R
            ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento""",
         (producto_id,),
     ).fetchall()
+
+
+def consumir_fefo(conn: sqlite3.Connection, producto_id: str, cantidad) -> None:
+    """Descuenta `cantidad` de los lotes del producto empezando por el que vence
+    ANTES (FEFO: First-Expired-First-Out; los lotes sin fecha se consumen al
+    final). Cada lote que llega a cero se da de baja. Si los lotes no alcanzan a
+    cubrir la cantidad (stock desincronizado), descuenta lo disponible y corta:
+    no deja lotes en negativo (el stock_actual sí puede quedar negativo, eso lo
+    lleva el ledger de movimientos)."""
+    restante = Decimal(str(cantidad))
+    if restante <= 0:
+        return
+    lotes = conn.execute(
+        """SELECT id, cantidad FROM lotes
+           WHERE producto_id = ? AND activo = 1 AND cantidad > 0
+           ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento""",
+        (producto_id,),
+    ).fetchall()
+    for lote in lotes:
+        if restante <= 0:
+            break
+        disponible = Decimal(str(lote["cantidad"]))
+        usar = min(disponible, restante)
+        queda = disponible - usar
+        if queda > 0:
+            conn.execute(
+                "UPDATE lotes SET cantidad = ?, updated_at = ? WHERE id = ?",
+                (str(queda), ahora_iso(), lote["id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE lotes SET cantidad = 0, activo = 0, updated_at = ? "
+                "WHERE id = ?",
+                (ahora_iso(), lote["id"]),
+            )
+        restante -= usar
 
 
 def eliminar(conn: sqlite3.Connection, lote_id: str) -> None:

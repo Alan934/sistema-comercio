@@ -126,6 +126,30 @@ def aumentar_stock(conn: sqlite3.Connection, producto_id: str, cantidad,
     movimiento_repo.registrar(conn, producto_id, cantidad, tipo, referencia_id)
 
 
+def ajustar_stock(conn: sqlite3.Connection, producto_id: str, nuevo_stock,
+                  referencia_id: str | None = None) -> None:
+    """Fija el stock a un valor ABSOLUTO (ajuste manual desde la edición del
+    producto). Calcula la diferencia con el stock actual y la anota con signo en
+    el ledger como AJUSTE, para que la corrección viaje al resto de las PCs (el
+    stock se reconstruye sumando el ledger). Si no cambia, no hace nada."""
+    row = conn.execute(
+        "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Producto inexistente: {producto_id}")
+    objetivo = Decimal(str(nuevo_stock))
+    delta = objetivo - Decimal(str(row["stock_actual"]))
+    if delta == 0:
+        return
+    conn.execute(
+        "UPDATE productos SET stock_actual = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
+        (str(objetivo), ahora_iso(), producto_id),
+    )
+    movimiento_repo.registrar(conn, producto_id, delta,
+                              movimiento_repo.AJUSTE, referencia_id)
+
+
 def actualizar_costo(conn: sqlite3.Connection, producto_id: str, costo) -> None:
     """Actualiza el costo de compra con el del último remito recibido."""
     conn.execute(
