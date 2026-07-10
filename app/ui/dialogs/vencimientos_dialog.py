@@ -4,6 +4,8 @@ Un perecedero puede tener varias fechas conviviendo (p. ej. stock que vence el
 07/07 y stock nuevo que vence el 11/07). Acá se ven todas, se agregan y se
 quitan. La alerta de Stock usa siempre la más próxima.
 """
+from decimal import Decimal
+
 import customtkinter as ctk
 
 from app.core import formato
@@ -11,6 +13,50 @@ from app.services import stock_service
 from app.ui import theme
 from app.ui.dialogs import notificar
 from app.ui.dialogs.base import ModalBase
+
+
+class _QuitarLoteDialog(ModalBase):
+    """Al quitar un lote con existencias, pregunta si además hay que descontar
+    esa cantidad del stock (mercadería vencida que se retira). Devuelve
+    'descontar', 'solo_fecha' o None (cancelar)."""
+
+    def __init__(self, master, resumen: str):
+        super().__init__(master, "Quitar vencimiento")
+        cont = ctk.CTkFrame(self, fg_color="transparent")
+        cont.pack(padx=28, pady=(26, 8), fill="x")
+        ctk.CTkLabel(cont, text="?", width=48, height=48, corner_radius=24,
+                     fg_color=theme.ACCENT, text_color="#FFFFFF",
+                     font=theme.fuente(24, "bold")).grid(
+            row=0, column=0, rowspan=2, padx=(0, 16))
+        ctk.CTkLabel(cont, text="Quitar vencimiento", anchor="w",
+                     font=theme.fuente(18, "bold"), text_color=theme.TXT).grid(
+            row=0, column=1, sticky="w")
+        ctk.CTkLabel(
+            cont, text=f"¿También querés descontar {resumen} del stock?",
+            anchor="w", justify="left", wraplength=380, font=theme.fuente(14),
+            text_color=theme.TXT_MUTED).grid(row=1, column=1, sticky="w",
+                                             pady=(2, 0))
+
+        botones = ctk.CTkFrame(self, fg_color="transparent")
+        botones.pack(pady=(12, 22))
+        ctk.CTkButton(botones, text="Cancelar", width=110, height=40,
+                      corner_radius=10, fg_color="transparent",
+                      text_color=theme.TXT_MUTED, border_width=1,
+                      border_color=theme.GHOST, hover_color=theme.GHOST,
+                      command=self._cancelar).pack(side="left", padx=6)
+        ctk.CTkButton(botones, text="No, solo la fecha", width=150, height=40,
+                      corner_radius=10, fg_color="gray",
+                      command=lambda: self._aceptar("solo_fecha")).pack(
+            side="left", padx=6)
+        ctk.CTkButton(botones, text="Sí, descontar", width=150, height=40,
+                      corner_radius=10, fg_color=theme.PRIMARY,
+                      hover_color=theme.PRIMARY_HOVER,
+                      command=lambda: self._aceptar("descontar")).pack(
+            side="left", padx=6)
+        self._activar_enter()
+
+    def _confirmar(self):  # Enter = la acción principal (descontar)
+        self._aceptar("descontar")
 
 
 def _fecha_es(iso: str | None) -> str:
@@ -115,7 +161,8 @@ class VencimientosDialog(ModalBase):
         ctk.CTkButton(f, text="🗑  Quitar", width=90, height=30, corner_radius=8,
                       font=theme.fuente(12), fg_color="transparent",
                       text_color=theme.ROJO, hover_color=theme.GHOST,
-                      command=lambda lid=lote["id"]: self._quitar(lid)).grid(
+                      command=lambda lid=lote["id"], c=lote["cantidad"]:
+                          self._quitar(lid, c)).grid(
             row=0, column=2, rowspan=2, padx=10)
 
     # --- Acciones -----------------------------------------------------------
@@ -132,6 +179,15 @@ class VencimientosDialog(ModalBase):
         self._refrescar()
         self.ent_fecha.focus_set()
 
-    def _quitar(self, lote_id: str) -> None:
-        stock_service.eliminar_lote(lote_id)
+    def _quitar(self, lote_id: str, cantidad) -> None:
+        # Si el lote tiene existencias, ofrecemos descontarlas del stock (la
+        # mercadería vencida se retira); si no, se quita la fecha sin más.
+        descontar = False
+        if Decimal(str(cantidad)) > 0:
+            resumen = f"{formato.numero(cantidad)}{self._unidad}"
+            opcion = _QuitarLoteDialog(self, resumen).mostrar()
+            if opcion is None:
+                return  # canceló: no se toca nada
+            descontar = opcion == "descontar"
+        stock_service.eliminar_lote(lote_id, descontar_stock=descontar)
         self._refrescar()

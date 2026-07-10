@@ -8,9 +8,10 @@ Diseño para offline-first + hilo de sincronización:
 Patrón de uso: cada hilo abre SU PROPIA conexión con connect().
 """
 import sqlite3
+from datetime import date
 
 from config import settings
-from app.core.utils import ahora_iso
+from app.core.utils import ahora_iso, parse_fecha
 
 
 def connect() -> sqlite3.Connection:
@@ -35,6 +36,7 @@ def _migrar(conn: sqlite3.Connection) -> None:
                        ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
         "productos": [("margen_pct", "NUMERIC(6,2)"), ("ubicacion", "TEXT"),
                       ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "lotes": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
         "cuenta_movimientos": [("metodo", "TEXT")],
         "gastos": [("metodo", "TEXT NOT NULL DEFAULT 'EFECTIVO'")],
         "cierres_caja": [
@@ -48,7 +50,33 @@ def _migrar(conn: sqlite3.Connection) -> None:
             if nombre not in existentes:
                 conn.execute(
                     f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}")
+    _normalizar_fechas_lotes(conn)
     _promover_super_admin(conn)
+
+
+def _normalizar_fechas_lotes(conn: sqlite3.Connection) -> None:
+    """Repara lotes cuya fecha de vencimiento quedó guardada en un formato no-ISO
+    (ej. '11/07/2026' que cargaba el remito viejo). Sin esto, leer la lista de
+    vencimientos rompía con date.fromisoformat. Reescribe a ISO las que se puedan
+    interpretar; marca el lote para re-sincronizar. Idempotente."""
+    filas = conn.execute(
+        "SELECT id, fecha_vencimiento FROM lotes "
+        "WHERE fecha_vencimiento IS NOT NULL AND fecha_vencimiento <> ''"
+    ).fetchall()
+    for f in filas:
+        txt = f["fecha_vencimiento"]
+        try:
+            date.fromisoformat(txt)
+            continue  # ya está en ISO, no tocar
+        except ValueError:
+            pass
+        iso = parse_fecha(txt)
+        if iso:
+            conn.execute(
+                "UPDATE lotes SET fecha_vencimiento = ?, sincronizado = 0, "
+                "updated_at = ? WHERE id = ?",
+                (iso, ahora_iso(), f["id"]),
+            )
 
 
 def _promover_super_admin(conn: sqlite3.Connection) -> None:

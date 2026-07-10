@@ -91,6 +91,19 @@ CREATE TABLE IF NOT EXISTS compras_detalle (
     subtotal       NUMERIC(12,2) NOT NULL
 );
 
+-- Lotes de vencimiento de perecederos (espejo del local, sin `sincronizado`).
+-- Persistidos en la nube para no perder las fechas cargadas al restaurar/agregar
+-- una PC. compra_id queda sin FK: un lote del alta manual no tiene compra.
+CREATE TABLE IF NOT EXISTS lotes (
+    id                 TEXT PRIMARY KEY,
+    producto_id        TEXT NOT NULL,
+    fecha_vencimiento  TEXT,
+    cantidad           NUMERIC(12,3) NOT NULL DEFAULT 0,
+    compra_id          TEXT,
+    activo             BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at         TIMESTAMPTZ NOT NULL
+);
+
 -- ---------- Carne: despiece de reses (espejo del local) --------------------
 CREATE TABLE IF NOT EXISTS reses (
     id            TEXT PRIMARY KEY,

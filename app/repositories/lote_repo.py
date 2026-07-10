@@ -10,8 +10,9 @@ def crear(conn: sqlite3.Connection, producto_id: str, fecha_vencimiento: str,
           cantidad, compra_id: str | None = None) -> None:
     conn.execute(
         """INSERT INTO lotes
-           (id, producto_id, fecha_vencimiento, cantidad, compra_id, activo, updated_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?)""",
+           (id, producto_id, fecha_vencimiento, cantidad, compra_id, activo,
+            sincronizado, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, 0, ?)""",
         (nuevo_id(), producto_id, fecha_vencimiento, str(cantidad),
          compra_id, ahora_iso()),
     )
@@ -69,22 +70,32 @@ def consumir_fefo(conn: sqlite3.Connection, producto_id: str, cantidad) -> None:
         queda = disponible - usar
         if queda > 0:
             conn.execute(
-                "UPDATE lotes SET cantidad = ?, updated_at = ? WHERE id = ?",
+                "UPDATE lotes SET cantidad = ?, sincronizado = 0, updated_at = ? "
+                "WHERE id = ?",
                 (str(queda), ahora_iso(), lote["id"]),
             )
         else:
             conn.execute(
-                "UPDATE lotes SET cantidad = 0, activo = 0, updated_at = ? "
-                "WHERE id = ?",
+                "UPDATE lotes SET cantidad = 0, activo = 0, sincronizado = 0, "
+                "updated_at = ? WHERE id = ?",
                 (ahora_iso(), lote["id"]),
             )
         restante -= usar
 
 
+def obtener(conn: sqlite3.Connection, lote_id: str) -> sqlite3.Row | None:
+    """Trae un lote por id (para saber su cantidad/producto al quitarlo)."""
+    return conn.execute(
+        "SELECT id, producto_id, fecha_vencimiento, cantidad, activo "
+        "FROM lotes WHERE id = ?", (lote_id,)
+    ).fetchone()
+
+
 def eliminar(conn: sqlite3.Connection, lote_id: str) -> None:
     """Borrado lógico de un lote (activo = 0)."""
     conn.execute(
-        "UPDATE lotes SET activo = 0, updated_at = ? WHERE id = ?",
+        "UPDATE lotes SET activo = 0, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
         (ahora_iso(), lote_id),
     )
 
@@ -103,6 +114,59 @@ def ultimo_activo(conn: sqlite3.Connection, producto_id: str) -> sqlite3.Row | N
 def actualizar_fecha(conn: sqlite3.Connection, lote_id: str,
                      fecha_vencimiento: str) -> None:
     conn.execute(
-        "UPDATE lotes SET fecha_vencimiento = ?, updated_at = ? WHERE id = ?",
+        "UPDATE lotes SET fecha_vencimiento = ?, sincronizado = 0, "
+        "updated_at = ? WHERE id = ?",
         (fecha_vencimiento, ahora_iso(), lote_id),
     )
+
+
+# --- Sincronización con la nube --------------------------------------------
+
+def obtener_pendientes_sync(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Lotes con cambios locales sin subir (sincronizado = 0)."""
+    return conn.execute(
+        "SELECT * FROM lotes WHERE sincronizado = 0"
+    ).fetchall()
+
+
+def marcar_sincronizado(conn: sqlite3.Connection, lote_id: str) -> None:
+    conn.execute(
+        "UPDATE lotes SET sincronizado = 1 WHERE id = ?", (lote_id,)
+    )
+
+
+def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
+    """Aplica un lote traído de la nube.
+
+    - Si el lote local tiene cambios sin subir (sincronizado = 0), NO se pisa:
+      gana lo local hasta que suba (mismo criterio que productos).
+    - Si ya existe sincronizado, se actualiza (fecha, cantidad, estado).
+    - Si es nuevo (PC nueva/restaurada), se inserta ya sincronizado. Así las
+      fechas de vencimiento se recuperan aunque se reinstale la caja."""
+    actual = conn.execute(
+        "SELECT sincronizado FROM lotes WHERE id = ?", (fila["id"],)
+    ).fetchone()
+    if actual is not None and actual["sincronizado"] == 0:
+        return  # cambios locales sin subir: no pisar
+    activo = 1 if fila["activo"] else 0
+    updated = (fila["updated_at"].isoformat()
+               if hasattr(fila["updated_at"], "isoformat")
+               else str(fila["updated_at"]))
+    if actual is not None:
+        conn.execute(
+            """UPDATE lotes SET producto_id = ?, fecha_vencimiento = ?,
+                 cantidad = ?, compra_id = ?, activo = ?, sincronizado = 1,
+                 updated_at = ? WHERE id = ?""",
+            (fila["producto_id"], fila["fecha_vencimiento"],
+             str(fila["cantidad"]), fila.get("compra_id"), activo, updated,
+             fila["id"]),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO lotes
+                 (id, producto_id, fecha_vencimiento, cantidad, compra_id,
+                  activo, sincronizado, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 1, ?)""",
+            (fila["id"], fila["producto_id"], fila["fecha_vencimiento"],
+             str(fila["cantidad"]), fila.get("compra_id"), activo, updated),
+        )

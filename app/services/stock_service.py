@@ -1,31 +1,17 @@
 """Lógica de negocio de stock: alta/edición de productos y alertas."""
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from app.core import db_local, pricing
-from app.core.utils import ahora_iso, nuevo_id, normalizar_nombre
+# parse_fecha vive en utils (lo comparte la migración de db_local); se reexporta
+# acá para no romper los `stock_service.parse_fecha` que ya usa la UI.
+from app.core.utils import ahora_iso, nuevo_id, normalizar_nombre, parse_fecha
 from app.models.producto import Producto
-from app.repositories import producto_repo, lote_repo, categoria_repo
+from app.repositories import producto_repo, lote_repo, categoria_repo, movimiento_repo
 
 
 class StockError(Exception):
     """Error de negocio esperable."""
-
-
-def parse_fecha(texto: str | None) -> str | None:
-    """Normaliza una fecha escrita por el usuario a ISO (YYYY-MM-DD).
-
-    Acepta dd/mm/aaaa, dd-mm-aaaa y el propio ISO. Devuelve None si está vacía
-    o no se puede interpretar."""
-    texto = (texto or "").strip()
-    if not texto:
-        return None
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(texto, fmt).date().isoformat()
-        except ValueError:
-            continue
-    return None
 
 
 def _a_margen(valor) -> Decimal | None:
@@ -96,8 +82,11 @@ def crear_producto(datos: dict) -> str:
         with conn:
             _aplicar_margen(conn, completo)
             producto_repo.crear(conn, completo)
-            if completo["_fecha_vencimiento"]:
-                # Lote inicial del alta: usa el stock inicial como cantidad.
+            # Lote inicial del alta: solo si hay stock que vencer. Un lote en 0
+            # no aporta nada (no hay unidades que caduquen) y ensucia la lista;
+            # la fecha se cargará con el primer remito o desde el gestor.
+            if completo["_fecha_vencimiento"] and \
+                    Decimal(completo["stock_actual"]) > 0:
                 lote_repo.crear(conn, completo["id"],
                                 completo["_fecha_vencimiento"],
                                 completo["stock_actual"])
@@ -188,12 +177,14 @@ def alertas_vencimientos(dias: int = 7) -> list[dict]:
     hoy = date.today()
     salida = []
     for r in rows:
-        venc = date.fromisoformat(r["fecha_vencimiento"])
+        dias = _dias(r["fecha_vencimiento"], hoy)
+        if dias is None:
+            continue  # fecha ilegible: no la reportamos como alerta
         salida.append({
             "producto": r["producto_nombre"],
             "fecha_vencimiento": r["fecha_vencimiento"],
             "cantidad": r["cantidad"],
-            "dias_restantes": (venc - hoy).days,
+            "dias_restantes": dias,
         })
     return salida
 
@@ -210,10 +201,20 @@ def listar_lotes(producto_id: str) -> list[dict]:
     salida = []
     for r in rows:
         f = r["fecha_vencimiento"]
-        dias = (date.fromisoformat(f) - hoy).days if f else None
         salida.append({"id": r["id"], "fecha_vencimiento": f,
-                       "cantidad": r["cantidad"], "dias_restantes": dias})
+                       "cantidad": r["cantidad"], "dias_restantes": _dias(f, hoy)})
     return salida
+
+
+def _dias(fecha_iso: str | None, hoy: date) -> int | None:
+    """Días hasta la fecha (negativo = vencida). None si no hay fecha o quedó en
+    un formato ilegible: así una fecha corrupta nunca rompe la lista/alertas."""
+    if not fecha_iso:
+        return None
+    try:
+        return (date.fromisoformat(fecha_iso) - hoy).days
+    except ValueError:
+        return None
 
 
 def agregar_lote(producto_id: str, fecha_texto: str, cantidad_texto: str = "0") -> None:
@@ -225,8 +226,8 @@ def agregar_lote(producto_id: str, fecha_texto: str, cantidad_texto: str = "0") 
         cantidad = Decimal(str(cantidad_texto or "0").replace(",", "."))
     except (ArithmeticError, ValueError):
         raise StockError("Cantidad inválida.")
-    if cantidad < 0:
-        raise StockError("La cantidad no puede ser negativa.")
+    if cantidad <= 0:
+        raise StockError("Indicá una cantidad mayor a cero para el lote.")
     conn = db_local.connect()
     try:
         with conn:
@@ -235,11 +236,22 @@ def agregar_lote(producto_id: str, fecha_texto: str, cantidad_texto: str = "0") 
         conn.close()
 
 
-def eliminar_lote(lote_id: str) -> None:
-    """Da de baja (borrado lógico) un lote."""
+def eliminar_lote(lote_id: str, descontar_stock: bool = False) -> None:
+    """Da de baja (borrado lógico) un lote. Si `descontar_stock`, además resta del
+    stock del producto la cantidad que tenía el lote (mercadería que se retira por
+    vencimiento), dejando el movimiento como AJUSTE para que viaje al resto de las
+    PCs por el ledger."""
     conn = db_local.connect()
     try:
         with conn:
+            if descontar_stock:
+                lote = lote_repo.obtener(conn, lote_id)
+                if lote is not None:
+                    cantidad = Decimal(str(lote["cantidad"]))
+                    if cantidad > 0:
+                        producto_repo.descontar_stock(
+                            conn, lote["producto_id"], cantidad,
+                            tipo=movimiento_repo.AJUSTE, referencia_id=lote_id)
             lote_repo.eliminar(conn, lote_id)
     finally:
         conn.close()
@@ -256,7 +268,9 @@ def vencimientos_por_producto(dias: int = 7) -> dict[str, int]:
     hoy = date.today()
     mapa: dict[str, int] = {}
     for r in rows:
-        dr = (date.fromisoformat(r["fecha_vencimiento"]) - hoy).days
+        dr = _dias(r["fecha_vencimiento"], hoy)
+        if dr is None:
+            continue
         pid = r["producto_id"]
         if pid not in mapa or dr < mapa[pid]:
             mapa[pid] = dr

@@ -44,6 +44,23 @@ def normalizar_nombre(texto: str) -> str:
     return " ".join(salida)
 
 
+def parse_fecha(texto: str | None) -> str | None:
+    """Normaliza una fecha escrita por el usuario a ISO (YYYY-MM-DD).
+
+    Acepta dd/mm/aaaa, dd-mm-aaaa y el propio ISO. Devuelve None si está vacía
+    o no se puede interpretar. Es el ÚNICO formato con el que se guardan las
+    fechas de vencimiento (así comparar y leer con date.fromisoformat es seguro)."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
 def ahora_iso() -> str:
     """Timestamp actual en ISO8601 UTC (con microsegundos). Para
     created_at/updated_at: la sincronización y la resolución de conflictos no

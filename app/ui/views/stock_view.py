@@ -22,6 +22,14 @@ def _money(v) -> str:
     return formato.moneda(v)
 
 
+# Ancho fijo de la celda de acciones (botón Vencim. + Editar). Se reserva igual
+# en TODAS las filas —tengan o no el botón de vencimiento— para que las columnas
+# queden alineadas con el encabezado (si no, la fila con Vencim. corre el resto).
+ANCHO_VENCIM = 108   # 104 del botón + 4 de separación
+ANCHO_EDITAR = 100
+ANCHO_ACC = ANCHO_VENCIM + ANCHO_EDITAR
+
+
 class StockView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
@@ -114,7 +122,7 @@ class StockView(ctk.CTkFrame):
         header.grid_columnconfigure(0, weight=1)
         for col, (txt, w) in enumerate(
                 [("Producto", 250), ("Código", 130), ("Precio", 100),
-                 ("Costo", 100), ("Stock", 80), ("", 80)]):
+                 ("Costo", 100), ("Stock", 80), ("", ANCHO_ACC)]):
             ctk.CTkLabel(header, text=txt, width=w, anchor="w",
                          font=theme.fuente(12, "bold"),
                          text_color=theme.TXT_MUTED).grid(row=0, column=col, padx=4)
@@ -278,8 +286,12 @@ class StockView(ctk.CTkFrame):
             ctk.CTkLabel(f, text=stock_txt, width=80, anchor="w",
                          font=theme.fuente(14), text_color=theme.TXT).grid(
                 row=0, column=4, padx=4)
-            acc = ctk.CTkFrame(f, fg_color="transparent")
+            # Ancho fijo (pack_propagate False) para que todas las filas midan
+            # lo mismo y queden alineadas, tengan o no el botón de vencimiento.
+            acc = ctk.CTkFrame(f, fg_color="transparent",
+                               width=ANCHO_ACC, height=32)
             acc.grid(row=0, column=5, padx=4)
+            acc.pack_propagate(False)
             if p.controla_vencimiento:
                 ctk.CTkButton(acc, text="📅  Vencim.", width=104, height=32,
                               corner_radius=8, font=theme.fuente(13),
@@ -288,7 +300,11 @@ class StockView(ctk.CTkFrame):
                               command=lambda pid=p.id, n=p.nombre, ps=p.es_pesable:
                                   self._gestionar_vencimientos(pid, n, ps)).pack(
                     side="left", padx=(0, 4))
-            ctk.CTkButton(acc, text="✏  Editar", width=100, height=32,
+            else:
+                # Placeholder invisible que reserva el hueco del botón Vencim.
+                ctk.CTkFrame(acc, fg_color="transparent",
+                             width=ANCHO_VENCIM, height=32).pack(side="left")
+            ctk.CTkButton(acc, text="✏  Editar", width=ANCHO_EDITAR, height=32,
                           corner_radius=8, font=theme.fuente(13),
                           fg_color="transparent", text_color=theme.ACCENT,
                           hover_color=theme.GHOST,

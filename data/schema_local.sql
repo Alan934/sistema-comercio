@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS lotes (
     cantidad           NUMERIC(12,3) NOT NULL DEFAULT 0,
     compra_id          TEXT,
     activo             INTEGER NOT NULL DEFAULT 1,
+    sincronizado       INTEGER NOT NULL DEFAULT 0,
     updated_at         TEXT NOT NULL
 );
 

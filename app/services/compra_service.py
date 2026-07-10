@@ -11,7 +11,7 @@ Todo dentro de una sola transacción: o entra completo, o no entra nada.
 from decimal import Decimal
 
 from app.core import db_local
-from app.core.utils import ahora_iso, ahora_local, nuevo_id
+from app.core.utils import ahora_iso, ahora_local, nuevo_id, parse_fecha
 from app.models.compra import Compra, ItemCompra, CONTADO, CUENTA_CORRIENTE
 from app.repositories import compra_repo, producto_repo, lote_repo, cuenta_repo
 
@@ -48,8 +48,11 @@ def registrar_compra(proveedor_id: str, items: list[ItemCompra],
                 producto_repo.recalcular_precio(conn, it.producto_id)
                 producto_repo.aumentar_stock(conn, it.producto_id, it.cantidad,
                                              referencia_id=compra.id)
-                if it.fecha_vencimiento:
-                    lote_repo.crear(conn, it.producto_id, it.fecha_vencimiento,
+                # Guarda la fecha SIEMPRE en ISO (aunque venga en dd/mm/aaaa):
+                # es lo que espera la lectura de lotes (date.fromisoformat).
+                fecha_venc = parse_fecha(it.fecha_vencimiento)
+                if fecha_venc:
+                    lote_repo.crear(conn, it.producto_id, fecha_venc,
                                     it.cantidad, compra.id)
             if condicion == CUENTA_CORRIENTE:
                 cuenta_repo.registrar_movimiento(

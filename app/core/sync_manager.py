@@ -21,7 +21,7 @@ from app.repositories import (producto_repo, venta_repo, compra_repo,
                              cuenta_repo, gasto_repo, cliente_repo,
                              proveedor_repo, categoria_repo, usuario_repo,
                              cierre_repo, res_repo, pieza_repo, corte_repo,
-                             movimiento_repo)
+                             movimiento_repo, lote_repo)
 from config import settings
 
 try:
@@ -104,6 +104,13 @@ def _pull_catalogo(local, cloud) -> int:
         cur.execute("SELECT * FROM cortes")
         for corte in cur.fetchall():
             corte_repo.sincronizar_desde_nube(local, corte)
+            aplicados += 1
+
+        # Lotes de vencimiento: van después de productos (FK producto_id local).
+        cur.execute("SELECT id, producto_id, fecha_vencimiento, cantidad, "
+                    "compra_id, activo, updated_at FROM lotes")
+        for lote in cur.fetchall():
+            lote_repo.sincronizar_desde_nube(local, lote)
             aplicados += 1
 
     local.commit()
@@ -535,6 +542,38 @@ def _push_movimientos(local, cloud) -> int:
     return len(pendientes)
 
 
+def _push_lotes(local, cloud) -> int:
+    """Sube los lotes de vencimiento pendientes (upsert). Van después de
+    productos y compras porque referencian ambos. Así las fechas cargadas no se
+    pierden y viajan al resto de las PCs."""
+    pendientes = lote_repo.obtener_pendientes_sync(local)
+    if not pendientes:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            for l in pendientes:
+                cur.execute(
+                    """INSERT INTO lotes
+                         (id, producto_id, fecha_vencimiento, cantidad,
+                          compra_id, activo, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         producto_id = EXCLUDED.producto_id,
+                         fecha_vencimiento = EXCLUDED.fecha_vencimiento,
+                         cantidad = EXCLUDED.cantidad,
+                         compra_id = EXCLUDED.compra_id,
+                         activo = EXCLUDED.activo,
+                         updated_at = EXCLUDED.updated_at""",
+                    (l["id"], l["producto_id"], l["fecha_vencimiento"],
+                     _num(l["cantidad"]), l["compra_id"], bool(l["activo"]),
+                     _dt(l["updated_at"])),
+                )
+    for l in pendientes:
+        lote_repo.marcar_sincronizado(local, l["id"])
+    local.commit()
+    return len(pendientes)
+
+
 def _push_gastos(local, cloud) -> int:
     """Sube los gastos pendientes."""
     pendientes = gasto_repo.obtener_pendientes(local)
@@ -586,6 +625,7 @@ def sincronizar_ahora() -> dict:
         contactos = _push_catalogo(local, cloud)
         ventas = _push_ventas(local, cloud)
         compras = _push_compras(local, cloud)
+        lotes = _push_lotes(local, cloud)
         # Carne: reses -> piezas -> cortes (ese orden por las FK de la nube).
         reses = _push_reses(local, cloud)
         piezas = _push_piezas(local, cloud)
@@ -605,6 +645,7 @@ def sincronizar_ahora() -> dict:
                 "contactos_subidos": contactos,
                 "ventas_subidas": ventas,
                 "compras_subidas": compras,
+                "lotes_subidos": lotes,
                 "reses_subidas": reses,
                 "piezas_subidas": piezas,
                 "cortes_subidos": cortes,

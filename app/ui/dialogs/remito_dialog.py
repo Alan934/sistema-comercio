@@ -15,7 +15,7 @@ import customtkinter as ctk
 from app.core import formato
 
 from app.models.compra import ItemCompra, CONTADO, CUENTA_CORRIENTE
-from app.services import venta_service, proveedor_service
+from app.services import venta_service, proveedor_service, stock_service
 from app.ui import theme
 from app.ui.autocomplete import AutocompleteBuscador, AutocompleteSimple
 from app.ui.dialogs.base import ModalBase
@@ -80,7 +80,7 @@ class ItemRemitoDialog(ModalBase):
 
         ctk.CTkLabel(self, text="Vencimiento (opcional)", anchor="w").grid(
             row=5, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_venc = ctk.CTkEntry(self, width=200, placeholder_text="AAAA-MM-DD")
+        self.ent_venc = ctk.CTkEntry(self, width=200, placeholder_text="dd/mm/aaaa")
         self.ent_venc.grid(row=5, column=1, padx=(8, 20), pady=6)
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
@@ -137,7 +137,16 @@ class ItemRemitoDialog(ModalBase):
         if unitario is None:
             self.lbl_error.configure(text="⚠ Costo inválido")
             return
-        venc = self.ent_venc.get().strip() or None
+        # Normaliza la fecha al mismo formato ISO que usa "nuevo producto", así
+        # los lotes de remito y de alta conviven sin romper la lista de vencim.
+        venc_txt = self.ent_venc.get().strip()
+        venc = None
+        if venc_txt:
+            venc = stock_service.parse_fecha(venc_txt)
+            if venc is None:
+                self.lbl_error.configure(
+                    text="⚠ Fecha de vencimiento inválida (dd/mm/aaaa)")
+                return
         self._aceptar(ItemCompra(
             producto_id=self.producto.id, cantidad=cant,
             costo_unitario=unitario, fecha_vencimiento=venc))
