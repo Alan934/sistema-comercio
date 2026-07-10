@@ -92,6 +92,10 @@ class AppWindow(ctk.CTk):
                   "usuarios": "👤"}
         secciones = SECCIONES_POR_ROL.get(usuario.rol, ["caja"])
 
+        # Bandera anti-doble-click: mientras una sección se está cargando
+        # ignoramos los clicks que llegan (ver mostrar()).
+        self._cargando = False
+
         self._vistas = {}
         self._botones = {}
         for clave in secciones:
@@ -174,33 +178,50 @@ class AppWindow(ctk.CTk):
             vista.recibir_escaneo(codigo)
 
     def mostrar(self, clave: str) -> None:
-        self._activa = clave
-        vista = self._vistas[clave]
+        # Anti-doble-click: la carga de una sección bloquea el hilo un momento
+        # (recarga de datos + armado de la tabla). Durante ese rato Tkinter
+        # ENCOLA los clicks que el usuario siga haciendo y, al terminar, los
+        # despacha de golpe, recargando la vista N veces. Con este guard el
+        # primer click carga y los siguientes se ignoran hasta que termina.
+        if self._cargando:
+            return
+        self._cargando = True
+        try:
+            self._activa = clave
+            vista = self._vistas[clave]
 
-        # 1) Feedback inmediato del click: resaltar el botón y mostrar el overlay
-        #    "Cargando…". Forzamos el repintado ANTES de reconstruir la tabla
-        #    (que bloquea un momento) para que el usuario vea que entró ya.
-        for k, btn in self._botones.items():
-            if k == clave:
-                btn.configure(fg_color=theme.NAV_ACTIVE_BG, text_color="#FFFFFF")
-            else:
-                btn.configure(fg_color="transparent",
-                              text_color=theme.NAV_TXT_INACT)
-        self._overlay_lbl.configure(
-            text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
-        self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self._overlay.lift()
-        self.update_idletasks()  # pinta botón + overlay antes de bloquear
+            # 1) Feedback inmediato del click: resaltar el botón y mostrar el
+            #    overlay "Cargando…". Forzamos el repintado ANTES de reconstruir
+            #    la tabla (que bloquea un momento) para que el usuario vea que
+            #    entró ya.
+            for k, btn in self._botones.items():
+                if k == clave:
+                    btn.configure(fg_color=theme.NAV_ACTIVE_BG,
+                                  text_color="#FFFFFF")
+                else:
+                    btn.configure(fg_color="transparent",
+                                  text_color=theme.NAV_TXT_INACT)
+            self._overlay_lbl.configure(
+                text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
+            self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._overlay.lift()
+            self.update_idletasks()  # pinta botón + overlay antes de bloquear
 
-        # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
-        #    tapado por el overlay para que no se vea el reacomodo de columnas.
-        if hasattr(vista, "al_mostrar"):
-            vista.al_mostrar()
-        vista.update_idletasks()
+            # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
+            #    tapado por el overlay para que no se vea el reacomodo de columnas.
+            if hasattr(vista, "al_mostrar"):
+                vista.al_mostrar()
+            vista.update_idletasks()
 
-        # 3) Revelar la vista ya armada y quitar el overlay.
-        vista.tkraise()
-        self._overlay.place_forget()
+            # 3) Revelar la vista ya armada y quitar el overlay.
+            vista.tkraise()
+            self._overlay.place_forget()
+        finally:
+            # Descarta la ráfaga de clicks encolados durante la carga: al
+            # procesarlos ahora, el guard (aún en True) los rechaza. Recién
+            # después liberamos la bandera.
+            self.update()
+            self._cargando = False
 
     def _toggle_tema(self) -> None:
         nuevo = "dark" if ctk.get_appearance_mode().lower() == "light" else "light"
