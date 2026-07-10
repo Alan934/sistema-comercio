@@ -18,3 +18,4 @@ class Producto:
     categoria_id: str | None = None
     margen_pct: Decimal | None = None   # override del margen de la categoría
     ubicacion: str | None = None        # dónde está físicamente
+    controla_vencimiento: bool = False  # perecedero: lleva lotes con fecha

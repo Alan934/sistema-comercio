@@ -10,7 +10,7 @@ from app.repositories import movimiento_repo
 
 _COLS = ("id, codigo_barra, nombre, es_pesable, unidad_medida, "
          "precio_venta, costo_compra, stock_actual, controla_stock, activo, "
-         "categoria_id, margen_pct, ubicacion")
+         "categoria_id, margen_pct, ubicacion, controla_vencimiento")
 
 
 def _to_producto(row: sqlite3.Row) -> Producto:
@@ -29,6 +29,7 @@ def _to_producto(row: sqlite3.Row) -> Producto:
         margen_pct=(Decimal(str(row["margen_pct"]))
                     if row["margen_pct"] is not None else None),
         ubicacion=row["ubicacion"],
+        controla_vencimiento=bool(row["controla_vencimiento"]),
     )
 
 

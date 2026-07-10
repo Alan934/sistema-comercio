@@ -15,6 +15,7 @@ from app.ui.dialogs.producto_dialog import ProductoDialog
 from app.ui.dialogs.remito_dialog import RemitoDialog
 from app.ui.dialogs.categorias_dialog import CategoriasManager
 from app.ui.dialogs.alertas_dialog import AlertasDialog
+from app.ui.dialogs.vencimientos_dialog import VencimientosDialog
 
 
 def _money(v) -> str:
@@ -25,6 +26,7 @@ class StockView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         self._productos = []
+        self._venc_map = {}
         # True cuando el campo de escaneo muestra un código ya buscado: el
         # próximo carácter nuevo arranca un código distinto (no concatena).
         self._scan_listo = False
@@ -196,6 +198,7 @@ class StockView(ctk.CTkFrame):
 
     def _recargar(self) -> None:
         self._productos = stock_service.listar_productos()
+        self._venc_map = stock_service.vencimientos_por_producto(7)
         self._auto_ubic.set_opciones(stock_service.listar_ubicaciones())
         self._render_tabla()
         self._render_alertas()
@@ -251,6 +254,18 @@ class StockView(ctk.CTkFrame):
                 ctk.CTkLabel(celda, text=f"Ubic. {p.ubicacion}", anchor="w",
                              font=theme.fuente(11),
                              text_color=theme.TXT_MUTED).pack(anchor="w")
+            dias = self._venc_map.get(p.id)
+            if dias is not None:
+                if dias < 0:
+                    txt, color = f"⚠ Vencido hace {-dias} día{'s' if dias != -1 else ''}", theme.ROJO
+                elif dias == 0:
+                    txt, color = "⚠ Vence hoy", theme.ROJO
+                else:
+                    txt, color = (f"⚠ Vence en {dias} día{'s' if dias != 1 else ''}",
+                                  theme.BADGE_KG_TXT)
+                ctk.CTkLabel(celda, text=txt, anchor="w",
+                             font=theme.fuente(11, "bold"),
+                             text_color=color).pack(anchor="w")
             ctk.CTkLabel(f, text=(p.codigo_barra or "—"), width=130, anchor="w",
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).grid(
                 row=0, column=1, padx=4)
@@ -263,12 +278,22 @@ class StockView(ctk.CTkFrame):
             ctk.CTkLabel(f, text=stock_txt, width=80, anchor="w",
                          font=theme.fuente(14), text_color=theme.TXT).grid(
                 row=0, column=4, padx=4)
-            ctk.CTkButton(f, text="✏  Editar", width=100, height=32,
+            acc = ctk.CTkFrame(f, fg_color="transparent")
+            acc.grid(row=0, column=5, padx=4)
+            if p.controla_vencimiento:
+                ctk.CTkButton(acc, text="📅  Vencim.", width=104, height=32,
+                              corner_radius=8, font=theme.fuente(13),
+                              fg_color="transparent", text_color=theme.ACCENT,
+                              hover_color=theme.GHOST,
+                              command=lambda pid=p.id, n=p.nombre, ps=p.es_pesable:
+                                  self._gestionar_vencimientos(pid, n, ps)).pack(
+                    side="left", padx=(0, 4))
+            ctk.CTkButton(acc, text="✏  Editar", width=100, height=32,
                           corner_radius=8, font=theme.fuente(13),
                           fg_color="transparent", text_color=theme.ACCENT,
                           hover_color=theme.GHOST,
-                          command=lambda pid=p.id: self._editar_producto(pid)).grid(
-                row=0, column=5, padx=4)
+                          command=lambda pid=p.id: self._editar_producto(pid)).pack(
+                side="left")
 
     # --- Acciones -----------------------------------------------------------
 
@@ -313,6 +338,11 @@ class StockView(ctk.CTkFrame):
         self._recargar()
         mostrar_toast(self, "Remito registrado · stock y costos actualizados",
                       tipo="ok")
+
+    def _gestionar_vencimientos(self, producto_id: str, nombre: str,
+                                es_pesable: bool = False) -> None:
+        VencimientosDialog(self, producto_id, nombre, es_pesable).mostrar()
+        self._recargar()  # cambió el mapa de vencimientos / alertas
 
     def _gestionar_categorias(self) -> None:
         CategoriasManager(self).mostrar()

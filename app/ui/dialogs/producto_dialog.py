@@ -115,13 +115,35 @@ class ProductoDialog(ModalBase):
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
         fila += 1
         ctk.CTkCheckBox(self, text="Controla vencimiento (perecedero)",
-                        variable=self.var_venc).grid(
+                        variable=self.var_venc, command=self._toggle_venc).grid(
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
+        fila += 1
+        # Fila de fecha: solo visible si se controla vencimiento.
+        self.fila_venc = ctk.CTkFrame(self, fg_color="transparent")
+        self.fila_venc.grid(row=fila, column=0, columnspan=2, sticky="w",
+                            padx=20, pady=(0, 3))
+        self.ent_venc = None
+        if self.es_edicion:
+            # En edición las fechas se gestionan con el gestor de lotes; el
+            # producto puede tener varias fechas conviviendo.
+            ctk.CTkLabel(
+                self.fila_venc,
+                text="Las fechas se gestionan con el botón «📅 Vencim.» "
+                     "de la lista de Stock.",
+                anchor="w", font=theme.fuente(12),
+                text_color=theme.TXT_MUTED).pack(side="left", padx=(20, 8))
+        else:
+            ctk.CTkLabel(self.fila_venc, text="Fecha de vencimiento",
+                         anchor="w").pack(side="left", padx=(20, 8))
+            self.ent_venc = ctk.CTkEntry(self.fila_venc, width=160,
+                                         placeholder_text="dd/mm/aaaa")
+            self.ent_venc.pack(side="left")
         fila += 1
         ctk.CTkCheckBox(self, text="Controla stock",
                         variable=self.var_stock).grid(
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
         fila += 1
+        self._toggle_venc()
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=fila, column=0, columnspan=2, padx=20)
@@ -138,6 +160,13 @@ class ProductoDialog(ModalBase):
         self._pie_atajos(grid_row=99)
         self.after(50, self._entries["nombre"].focus_set)
         self._recalcular()
+
+    def _toggle_venc(self) -> None:
+        """Muestra el campo de fecha solo cuando se controla vencimiento."""
+        if self.var_venc.get():
+            self.fila_venc.grid()
+        else:
+            self.fila_venc.grid_remove()
 
     # --- Precio calculado en vivo ------------------------------------------
 
@@ -188,6 +217,16 @@ class ProductoDialog(ModalBase):
                 self.lbl_error.configure(text="⚠ Margen inválido")
                 return
 
+        # En el alta, si controla vencimiento la fecha del primer lote es
+        # obligatoria. En edición no hay campo de fecha (se usa el gestor).
+        fecha_venc = None
+        if self.var_venc.get() and self.ent_venc is not None:
+            fecha_venc = stock_service.parse_fecha(self.ent_venc.get())
+            if fecha_venc is None:
+                self.lbl_error.configure(
+                    text="⚠ Indicá la fecha de vencimiento (dd/mm/aaaa)")
+                return
+
         datos = {
             "nombre": nombre,
             "codigo_barra": self._entries["codigo_barra"].get().strip() or None,
@@ -196,6 +235,7 @@ class ProductoDialog(ModalBase):
             "ubicacion": self.ent_ubicacion.get().strip() or None,
             "es_pesable": bool(self.var_pesable.get()),
             "controla_vencimiento": bool(self.var_venc.get()),
+            "fecha_vencimiento": fecha_venc,
             "controla_stock": bool(self.var_stock.get()),
             **numericos,
         }

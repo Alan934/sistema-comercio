@@ -1,5 +1,5 @@
 """Lógica de negocio de stock: alta/edición de productos y alertas."""
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from app.core import db_local, pricing
@@ -10,6 +10,22 @@ from app.repositories import producto_repo, lote_repo, categoria_repo
 
 class StockError(Exception):
     """Error de negocio esperable."""
+
+
+def parse_fecha(texto: str | None) -> str | None:
+    """Normaliza una fecha escrita por el usuario a ISO (YYYY-MM-DD).
+
+    Acepta dd/mm/aaaa, dd-mm-aaaa y el propio ISO. Devuelve None si está vacía
+    o no se puede interpretar."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 def _a_margen(valor) -> Decimal | None:
@@ -24,6 +40,12 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
     nombre = normalizar_nombre(datos.get("nombre") or "")
     if not nombre:
         raise StockError("El producto necesita un nombre.")
+    # Si controla vencimiento, en el ALTA la fecha del primer lote es obligatoria
+    # (en la edición las fechas se gestionan aparte, con el gestor de lotes).
+    controla_venc = bool(datos.get("controla_vencimiento"))
+    fecha_venc = parse_fecha(datos.get("fecha_vencimiento"))
+    if controla_venc and not con_id and fecha_venc is None:
+        raise StockError("Indicá la fecha de vencimiento (formato dd/mm/aaaa).")
     margen = _a_margen(datos.get("margen_pct"))
     completo = {
         "codigo_barra": (datos.get("codigo_barra") or None),
@@ -37,9 +59,12 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
         "precio_venta": str(datos.get("precio_venta", "0")),
         "stock_minimo": str(datos.get("stock_minimo", "0")),
         "controla_stock": 1 if datos.get("controla_stock", True) else 0,
-        "controla_vencimiento": 1 if datos.get("controla_vencimiento") else 0,
+        "controla_vencimiento": 1 if controla_venc else 0,
         "activo": 1 if datos.get("activo", True) else 0,
         "updated_at": ahora_iso(),
+        # Clave auxiliar (empieza con _, el repo la ignora al bindear): la usan
+        # crear/actualizar para armar el lote de vencimiento.
+        "_fecha_vencimiento": fecha_venc,
     }
     if con_id:
         completo["id"] = datos["id"]
@@ -71,6 +96,11 @@ def crear_producto(datos: dict) -> str:
         with conn:
             _aplicar_margen(conn, completo)
             producto_repo.crear(conn, completo)
+            if completo["_fecha_vencimiento"]:
+                # Lote inicial del alta: usa el stock inicial como cantidad.
+                lote_repo.crear(conn, completo["id"],
+                                completo["_fecha_vencimiento"],
+                                completo["stock_actual"])
     finally:
         conn.close()
     return completo["id"]
@@ -100,7 +130,12 @@ def obtener_producto(producto_id: str) -> dict | None:
     conn = db_local.connect()
     try:
         row = producto_repo.obtener(conn, producto_id)
-        return dict(row) if row else None
+        if row is None:
+            return None
+        datos = dict(row)
+        lote = lote_repo.ultimo_activo(conn, producto_id)
+        datos["fecha_vencimiento"] = lote["fecha_vencimiento"] if lote else None
+        return datos
     finally:
         conn.close()
 
@@ -149,3 +184,68 @@ def alertas_vencimientos(dias: int = 7) -> list[dict]:
             "dias_restantes": (venc - hoy).days,
         })
     return salida
+
+
+def listar_lotes(producto_id: str) -> list[dict]:
+    """Todos los lotes activos de un producto, con los días que faltan para
+    vencer (negativo = vencido; None si el lote no tiene fecha)."""
+    conn = db_local.connect()
+    try:
+        rows = lote_repo.listar_activos(conn, producto_id)
+    finally:
+        conn.close()
+    hoy = date.today()
+    salida = []
+    for r in rows:
+        f = r["fecha_vencimiento"]
+        dias = (date.fromisoformat(f) - hoy).days if f else None
+        salida.append({"id": r["id"], "fecha_vencimiento": f,
+                       "cantidad": r["cantidad"], "dias_restantes": dias})
+    return salida
+
+
+def agregar_lote(producto_id: str, fecha_texto: str, cantidad_texto: str = "0") -> None:
+    """Agrega un lote (fecha + cantidad) a un producto. No pisa los existentes."""
+    fecha = parse_fecha(fecha_texto)
+    if fecha is None:
+        raise StockError("Fecha inválida (formato dd/mm/aaaa).")
+    try:
+        cantidad = Decimal(str(cantidad_texto or "0").replace(",", "."))
+    except (ArithmeticError, ValueError):
+        raise StockError("Cantidad inválida.")
+    if cantidad < 0:
+        raise StockError("La cantidad no puede ser negativa.")
+    conn = db_local.connect()
+    try:
+        with conn:
+            lote_repo.crear(conn, producto_id, fecha, str(cantidad))
+    finally:
+        conn.close()
+
+
+def eliminar_lote(lote_id: str) -> None:
+    """Da de baja (borrado lógico) un lote."""
+    conn = db_local.connect()
+    try:
+        with conn:
+            lote_repo.eliminar(conn, lote_id)
+    finally:
+        conn.close()
+
+
+def vencimientos_por_producto(dias: int = 7) -> dict[str, int]:
+    """{producto_id: días para el vencimiento más próximo} (negativo = vencido).
+    Para marcar cada fila de la tabla de stock con su advertencia."""
+    conn = db_local.connect()
+    try:
+        rows = lote_repo.proximos_a_vencer(conn, dias)
+    finally:
+        conn.close()
+    hoy = date.today()
+    mapa: dict[str, int] = {}
+    for r in rows:
+        dr = (date.fromisoformat(r["fecha_vencimiento"]) - hoy).days
+        pid = r["producto_id"]
+        if pid not in mapa or dr < mapa[pid]:
+            mapa[pid] = dr
+    return mapa
