@@ -31,6 +31,13 @@ GHOST = ("#E6E8E7", "#3A3A3A")
 # Fila alterna en tablas (rayado zebra sutil sobre CARD_BG)
 ROW_ALT = ("#F5F7F6", "#333333")
 
+# Botón secundario "ghost" (contorno con texto de acento). En modo claro lleva
+# un tinte teal suave y un borde marcado para despegarse del fondo del mismo
+# color; en oscuro se mantiene transparente con borde sutil como antes.
+GHOST_BTN_BG = ("#E6F4EE", "#233530")
+GHOST_BTN_BORDER = ("#8FD0BA", "#3A5049")
+GHOST_BTN_HOVER = ("#D3EBE1", "#2C4038")
+
 # --- Texto -----------------------------------------------------------------
 TXT = ("#1A1A1A", "#F0F0F0")
 TXT_MUTED = ("#6B7280", "#9AA0A6")

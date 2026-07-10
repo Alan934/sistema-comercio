@@ -135,9 +135,9 @@ class CarneView(ctk.CTkFrame):
         acc = ctk.CTkFrame(card, fg_color="transparent")
         acc.grid(row=0, column=3, padx=(6, 16))
         ctk.CTkButton(acc, text="Abrir  →", width=100, height=36, corner_radius=8,
-                      font=theme.fuente(14), fg_color="transparent",
+                      font=theme.fuente(14), fg_color=theme.GHOST_BTN_BG,
                       text_color=theme.ACCENT, border_width=1,
-                      border_color=theme.GHOST, hover_color=theme.GHOST,
+                      border_color=theme.GHOST_BTN_BORDER, hover_color=theme.GHOST_BTN_HOVER,
                       command=lambda rid=res.id: self._abrir_res(rid)).pack(
             side="left", padx=(0, 6))
         ctk.CTkButton(acc, text="🗑", width=40, height=36, corner_radius=8,
@@ -169,9 +169,9 @@ class CarneView(ctk.CTkFrame):
         top.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 4))
         top.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(top, text="←  Volver", width=100, height=34, corner_radius=8,
-                      font=theme.fuente(14), fg_color="transparent",
+                      font=theme.fuente(14), fg_color=theme.GHOST_BTN_BG,
                       text_color=theme.ACCENT, border_width=1,
-                      border_color=theme.GHOST, hover_color=theme.GHOST,
+                      border_color=theme.GHOST_BTN_BORDER, hover_color=theme.GHOST_BTN_HOVER,
                       command=self._ir_a_lista).grid(row=0, column=0)
         self.lbl_res_titulo = ctk.CTkLabel(top, text="", font=theme.fuente(20, "bold"),
                                            text_color=theme.TXT)
@@ -198,8 +198,8 @@ class CarneView(ctk.CTkFrame):
         self.btn_nueva_pieza.grid(row=1, column=4, padx=8)
         self.btn_cerrar_res = ctk.CTkButton(
             self.card_res, text="Cerrar res", width=110, height=34, corner_radius=8,
-            font=theme.fuente(14), fg_color="transparent", text_color=theme.ACCENT,
-            border_width=1, border_color=theme.GHOST, hover_color=theme.GHOST,
+            font=theme.fuente(14), fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+            border_width=1, border_color=theme.GHOST_BTN_BORDER, hover_color=theme.GHOST_BTN_HOVER,
             command=self._cerrar_res)
         self.btn_cerrar_res.grid(row=1, column=5, padx=(0, 14))
 
@@ -245,8 +245,8 @@ class CarneView(ctk.CTkFrame):
         self.lbl_pie_gan.grid(row=0, column=2, padx=18, pady=12)
         self.btn_agregar_corte = ctk.CTkButton(
             pie, text="＋  Agregar corte", width=160, height=36, corner_radius=8,
-            font=theme.fuente(14), fg_color="transparent", text_color=theme.ACCENT,
-            border_width=1, border_color=theme.GHOST, hover_color=theme.GHOST,
+            font=theme.fuente(14), fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+            border_width=1, border_color=theme.GHOST_BTN_BORDER, hover_color=theme.GHOST_BTN_HOVER,
             command=self._agregar_corte)
         self.btn_agregar_corte.grid(row=0, column=4, padx=6)
         self.btn_confirmar = ctk.CTkButton(

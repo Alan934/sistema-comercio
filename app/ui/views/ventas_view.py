@@ -65,9 +65,9 @@ class VentasView(ctk.CTkFrame):
             row=0, column=1, padx=(0, 8))
         ctk.CTkButton(scanbar, text="Consultar precio (F2)", width=170,
                       height=48, corner_radius=10, font=theme.fuente(14),
-                      fg_color="transparent", text_color=theme.ACCENT,
-                      border_width=1, border_color=theme.GHOST,
-                      hover_color=theme.GHOST,
+                      fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST_BTN_BORDER,
+                      hover_color=theme.GHOST_BTN_HOVER,
                       command=self._consultar_precio).grid(row=0, column=2)
 
         cab = ctk.CTkFrame(main, fg_color="transparent")

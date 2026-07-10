@@ -55,15 +55,15 @@ class StockView(ctk.CTkFrame):
         self.ent_buscar.bind("<KeyRelease>", lambda _e: self._render_tabla())
         ctk.CTkButton(top, text="Categorías", width=110, height=38,
                       corner_radius=10, font=theme.fuente(14),
-                      fg_color="transparent", text_color=theme.ACCENT,
-                      border_width=1, border_color=theme.GHOST,
-                      hover_color=theme.GHOST,
+                      fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST_BTN_BORDER,
+                      hover_color=theme.GHOST_BTN_HOVER,
                       command=self._gestionar_categorias).grid(row=0, column=2, padx=4)
         ctk.CTkButton(top, text="Nuevo producto", width=140, height=38,
                       corner_radius=10, font=theme.fuente(14),
-                      fg_color="transparent", text_color=theme.ACCENT,
-                      border_width=1, border_color=theme.GHOST,
-                      hover_color=theme.GHOST,
+                      fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST_BTN_BORDER,
+                      hover_color=theme.GHOST_BTN_HOVER,
                       command=self._nuevo_producto).grid(row=0, column=3, padx=4)
         ctk.CTkButton(top, text="Recibir remito", width=140, height=38,
                       corner_radius=10, font=theme.fuente(14),
