@@ -205,7 +205,8 @@ class ReportesView(ctk.CTkFrame):
             (f"[{g['tipo']}] {g['descripcion']}"
              + (f"  · {g['proveedor_nombre']}" if g["proveedor_nombre"] else ""),
              _money(g["monto"]))
-            for g in gasto_service.listar(desde.isoformat(), hasta.isoformat())])
+            for g in gasto_service.listar(desde.isoformat(), hasta.isoformat())],
+            max_filas=60)
 
     def _tarjetas(self, r: dict) -> None:
         neta = r["ganancia_neta"]
@@ -275,7 +276,8 @@ class ReportesView(ctk.CTkFrame):
         dona.pack(fill="x", padx=14, pady=(0, 12))
         dona.set_data(items)
 
-    def _seccion(self, titulo: str, filas: list[tuple[str, str]]) -> None:
+    def _seccion(self, titulo: str, filas: list[tuple[str, str]],
+                 max_filas: int | None = None) -> None:
         card = ctk.CTkFrame(self.scroll, fg_color=theme.CARD_BG, corner_radius=12)
         card.pack(fill="x", padx=2, pady=6)
         ctk.CTkLabel(card, text=titulo, font=theme.fuente(15, "bold"),
@@ -285,13 +287,20 @@ class ReportesView(ctk.CTkFrame):
                          font=theme.fuente(13), text_color=theme.TXT_MUTED).pack(
                 anchor="w", padx=16, pady=(0, 12))
             return
-        for etiqueta, valor in filas:
+        # Se limita cuántas filas se dibujan (crear cientos de widgets congela la
+        # app). Las secciones acotadas (top 10, etc.) pasan max_filas=None.
+        mostradas = filas if max_filas is None else filas[:max_filas]
+        for etiqueta, valor in mostradas:
             f = ctk.CTkFrame(card, fg_color="transparent")
             f.pack(fill="x", padx=16, pady=2)
             ctk.CTkLabel(f, text=etiqueta, anchor="w", font=theme.fuente(14),
                          text_color=theme.TXT).pack(side="left")
             ctk.CTkLabel(f, text=valor, anchor="e", font=theme.fuente(14),
                          text_color=theme.TXT).pack(side="right")
+        if max_filas is not None and len(filas) > max_filas:
+            ctk.CTkLabel(card, text=f"… y {len(filas) - max_filas} más",
+                         font=theme.fuente(12), text_color=theme.TXT_MUTED).pack(
+                anchor="w", padx=16, pady=(2, 0))
         ctk.CTkFrame(card, fg_color="transparent", height=6).pack()
 
     # --- Acciones -----------------------------------------------------------

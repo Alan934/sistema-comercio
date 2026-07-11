@@ -9,6 +9,7 @@ from app.core import formato
 
 from app.services import cierre_service
 from app.ui import theme
+from app.ui.tablas import PintorEnTandas
 from app.ui.dialogs import notificar
 from app.ui.dialogs.cierre_dialog import CierreDialog
 
@@ -56,6 +57,7 @@ class CierresView(ctk.CTkFrame):
         self.tabla.grid(row=3, column=0, sticky="nsew", padx=20, pady=(24, 18))
         self.tabla.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
+        self._pintor = PintorEnTandas(self.tabla)
 
     def al_mostrar(self) -> None:
         self._recargar()
@@ -79,35 +81,38 @@ class CierresView(ctk.CTkFrame):
 
         for w in self.tabla.winfo_children():
             w.destroy()
+        self._pintor.cancelar()
         cierres = cierre_service.listar_cierres()
         if not cierres:
             ctk.CTkLabel(self.tabla, text="Todavía no hiciste ningún cierre.",
                          text_color=theme.TXT_MUTED).pack(pady=30)
             return
-        for i, c in enumerate(cierres):
-            f = ctk.CTkFrame(self.tabla,
-                             fg_color=theme.ROW_ALT if i % 2 else "transparent",
-                             corner_radius=8)
-            f.pack(fill="x", padx=6, pady=1)
-            f.grid_columnconfigure(4, weight=1)
-            dif = Decimal(str(c["diferencia"]))
-            col = theme.VERDE if dif >= 0 else theme.ROJO
-            etiqueta = "sobrante" if dif > 0 else ("faltante" if dif < 0 else "exacto")
-            ctk.CTkLabel(f, text=_fmt(c["fecha"]), width=150, anchor="w",
-                         font=theme.fuente(14), text_color=theme.TXT).grid(
-                row=0, column=0, padx=4)
-            ctk.CTkLabel(f, text=f"vendido {_money(c['total_vendido'])}", width=170,
-                         anchor="w", font=theme.fuente(13),
-                         text_color=theme.TXT_MUTED).grid(row=0, column=1, padx=4)
-            ctk.CTkLabel(f, text=f"efvo {_money(c['efectivo_ventas'])}", width=150,
-                         anchor="w", font=theme.fuente(13),
-                         text_color=theme.TXT_MUTED).grid(row=0, column=2, padx=4)
-            ctk.CTkLabel(f, text=f"contó {_money(c['efectivo_contado'])}", width=150,
-                         anchor="w", font=theme.fuente(13),
-                         text_color=theme.TXT_MUTED).grid(row=0, column=3, padx=4)
-            ctk.CTkLabel(f, text=f"{_money(dif)} ({etiqueta})", anchor="e",
-                         font=theme.fuente(14, "bold"), text_color=col).grid(
-                row=0, column=4, sticky="e", padx=8)
+        self._pintor.pintar(cierres, self._fila_cierre)
+
+    def _fila_cierre(self, c, i: int) -> None:
+        f = ctk.CTkFrame(self.tabla,
+                         fg_color=theme.ROW_ALT if i % 2 else "transparent",
+                         corner_radius=8)
+        f.pack(fill="x", padx=6, pady=1)
+        f.grid_columnconfigure(4, weight=1)
+        dif = Decimal(str(c["diferencia"]))
+        col = theme.VERDE if dif >= 0 else theme.ROJO
+        etiqueta = "sobrante" if dif > 0 else ("faltante" if dif < 0 else "exacto")
+        ctk.CTkLabel(f, text=_fmt(c["fecha"]), width=150, anchor="w",
+                     font=theme.fuente(14), text_color=theme.TXT).grid(
+            row=0, column=0, padx=4)
+        ctk.CTkLabel(f, text=f"vendido {_money(c['total_vendido'])}", width=170,
+                     anchor="w", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).grid(row=0, column=1, padx=4)
+        ctk.CTkLabel(f, text=f"efvo {_money(c['efectivo_ventas'])}", width=150,
+                     anchor="w", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).grid(row=0, column=2, padx=4)
+        ctk.CTkLabel(f, text=f"contó {_money(c['efectivo_contado'])}", width=150,
+                     anchor="w", font=theme.fuente(13),
+                     text_color=theme.TXT_MUTED).grid(row=0, column=3, padx=4)
+        ctk.CTkLabel(f, text=f"{_money(dif)} ({etiqueta})", anchor="e",
+                     font=theme.fuente(14, "bold"), text_color=col).grid(
+            row=0, column=4, sticky="e", padx=8)
 
     def _realizar(self) -> None:
         resumen = cierre_service.resumen_periodo_abierto()

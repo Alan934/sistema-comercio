@@ -15,6 +15,7 @@ from app.core import formato
 from app.models.res import ABIERTA, CUENTA_CORRIENTE
 from app.services import despiece_service as ds
 from app.ui import theme
+from app.ui.tablas import PintorEnTandas
 from app.ui.toast import mostrar_toast
 from app.ui.dialogs import notificar
 from app.ui.dialogs.res_dialog import ResDialog
@@ -83,6 +84,9 @@ class CarneView(ctk.CTkFrame):
         self.pant_lista.tkraise()
 
     def _render_lista(self) -> None:
+        if not hasattr(self, "_pintor_reses"):
+            self._pintor_reses = PintorEnTandas(self.lista_reses)
+        self._pintor_reses.cancelar()
         for w in self.lista_reses.winfo_children():
             w.destroy()
         reses = ds.listar_reses()
@@ -94,8 +98,9 @@ class CarneView(ctk.CTkFrame):
                 font=theme.fuente(15), text_color=theme.TXT_MUTED,
                 justify="center").pack(pady=48)
             return
-        for res in reses:
-            self._tarjeta_res(res)
+        # Cada tarjeta hace una consulta resumen_res: pintar en tandas evita
+        # bloquear la app cuando hay muchas reses.
+        self._pintor_reses.pintar(reses, lambda res, _i: self._tarjeta_res(res))
 
     def _tarjeta_res(self, res) -> None:
         resumen = ds.resumen_res(res.id)
