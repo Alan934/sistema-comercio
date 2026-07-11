@@ -46,27 +46,37 @@ class ItemRemitoDialog(ModalBase):
     def __init__(self, master, producto):
         super().__init__(master, "Agregar al remito")
         self.producto = producto
+        # Un producto pesable se recibe en kilos (no en unidades). Cambiamos las
+        # etiquetas para que el usuario sepa que ahí van los kilos, aunque la
+        # suma sea la misma.
+        self._pesable = getattr(producto, "es_pesable", False)
 
         ctk.CTkLabel(self, text=producto.nombre, font=theme.fuente(16, "bold")
                      ).grid(row=0, column=0, columnspan=2, padx=20, pady=(18, 10))
 
-        ctk.CTkLabel(self, text="Cantidad recibida", anchor="w").grid(
+        ctk.CTkLabel(self, text="Kilos recibidos" if self._pesable
+                     else "Cantidad recibida", anchor="w").grid(
             row=1, column=0, sticky="w", padx=(20, 8), pady=6)
-        self.ent_cant = ctk.CTkEntry(self, width=200)
+        self.ent_cant = ctk.CTkEntry(
+            self, width=200,
+            placeholder_text="Ej. 5,353 kg" if self._pesable else None)
         self.ent_cant.insert(0, "1")
         self.ent_cant.grid(row=1, column=1, padx=(8, 20), pady=6)
         self.ent_cant.bind("<KeyRelease>", self._recalcular)
 
         ctk.CTkLabel(self, text="Cargar el costo", anchor="w").grid(
             row=2, column=0, sticky="w", padx=(20, 8), pady=6)
+        self._por_unidad_lbl = "Por kilo" if self._pesable else POR_UNIDAD
         self.seg_modo = ctk.CTkSegmentedButton(
-            self, values=[POR_UNIDAD, POR_TOTAL],
+            self, values=[self._por_unidad_lbl, POR_TOTAL],
             selected_color=theme.PRIMARY, selected_hover_color=theme.PRIMARY_HOVER,
             command=lambda _v: self._cambiar_modo())
-        self.seg_modo.set(POR_UNIDAD)
+        self.seg_modo.set(self._por_unidad_lbl)
         self.seg_modo.grid(row=2, column=1, padx=(8, 20), pady=6, sticky="w")
 
-        self.lbl_costo = ctk.CTkLabel(self, text="Costo por unidad", anchor="w")
+        self.lbl_costo = ctk.CTkLabel(
+            self, text="Costo por kilo" if self._pesable else "Costo por unidad",
+            anchor="w")
         self.lbl_costo.grid(row=3, column=0, sticky="w", padx=(20, 8), pady=6)
         self.ent_costo = ctk.CTkEntry(self, width=200)
         self.ent_costo.insert(0, str(producto.costo_compra))
@@ -112,8 +122,9 @@ class ItemRemitoDialog(ModalBase):
         return costo
 
     def _cambiar_modo(self) -> None:
+        por_unidad = "Costo por kilo" if self._pesable else "Costo por unidad"
         self.lbl_costo.configure(
-            text="Costo total pagado" if self._por_total() else "Costo por unidad")
+            text="Costo total pagado" if self._por_total() else por_unidad)
         self._recalcular()
 
     def _recalcular(self, _event=None) -> None:
@@ -123,7 +134,8 @@ class ItemRemitoDialog(ModalBase):
             return
         cant = _num(self.ent_cant.get(), permite_cero=False)
         if self._por_total():
-            self.lbl_calculo.configure(text=f"→ Cada uno: {formato.moneda(unitario)}")
+            etiqueta = "→ Cada kilo:" if self._pesable else "→ Cada uno:"
+            self.lbl_calculo.configure(text=f"{etiqueta} {formato.moneda(unitario)}")
         else:
             total = (unitario * cant).quantize(CENTAVOS)
             self.lbl_calculo.configure(text=f"→ Total: {formato.moneda(total)}")

@@ -61,9 +61,26 @@ GAP = 8
 CHART_PALETTE = ["#1D9E75", "#378ADD", "#EF9F27", "#7F77DD", "#D85A30", "#639922"]
 
 
+_FUENTE_CACHE: dict = {}
+
+
 def fuente(tam: int = 14, peso: str = "normal") -> ctk.CTkFont:
-    """Crea una CTkFont. Llamar siempre después de que exista la ventana raíz."""
-    return ctk.CTkFont(size=tam, weight=peso)
+    """Devuelve una CTkFont reutilizable (cacheada). Llamar siempre después de
+    que exista la ventana raíz.
+
+    Antes se creaba una CTkFont NUEVA en cada llamada; como cada fila de una
+    tabla la pide varias veces, dibujar cientos de filas creaba miles de fuentes
+    y congelaba la app. Un CTkFont se puede compartir entre muchos widgets, así
+    que lo cacheamos por (tamaño, peso). La cache se indexa además por la ventana
+    raíz actual: el flujo login->app recrea la raíz (CTk nuevo) y una fuente
+    atada a la raíz vieja no debe reutilizarse."""
+    import tkinter
+    clave = (id(tkinter._default_root), tam, peso)
+    f = _FUENTE_CACHE.get(clave)
+    if f is None:
+        f = ctk.CTkFont(size=tam, weight=peso)
+        _FUENTE_CACHE[clave] = f
+    return f
 
 
 # --- Preferencia de apariencia (persistida) --------------------------------

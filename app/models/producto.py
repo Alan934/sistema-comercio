@@ -19,3 +19,4 @@ class Producto:
     margen_pct: Decimal | None = None   # override del margen de la categoría
     ubicacion: str | None = None        # dónde está físicamente
     controla_vencimiento: bool = False  # perecedero: lleva lotes con fecha
+    stock_minimo: Decimal = Decimal("0")  # umbral de alerta de stock bajo
