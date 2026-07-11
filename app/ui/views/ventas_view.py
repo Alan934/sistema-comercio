@@ -33,22 +33,36 @@ def _money(d: Decimal) -> str:
 
 
 class VentasView(ctk.CTkFrame):
+    # Máximo de cajas simultáneas: es "una segunda caja" para atender a dos
+    # personas a la vez, no N cajas (más de dos marea al usuario).
+    MAX_CAJAS = 2
+
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
-        self.carrito = Carrito()
+        # Cada caja es un carrito independiente. Se arranca con una sola; la
+        # segunda se abre a demanda (ver _abrir_segunda). `self.carrito` (abajo,
+        # como property) siempre apunta a la caja activa, así todo el resto del
+        # código sigue trabajando sobre "el carrito" sin enterarse de las cajas.
+        self.cajas = [Carrito()]
+        self.activa = 0
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0, minsize=250)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
 
         # --- Encabezado ---
         ctk.CTkLabel(self, text="Caja", font=theme.fuente(24, "bold"),
                      text_color=theme.TXT).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(18, 10))
+            row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(18, 6))
+
+        # --- Barra de cajas (pestañas + abrir/cerrar segunda) ---
+        self.barra_cajas = ctk.CTkFrame(self, fg_color="transparent")
+        self.barra_cajas.grid(row=1, column=0, columnspan=2, sticky="ew",
+                              padx=20, pady=(0, 10))
 
         # --- Columna izquierda: escaneo + carrito ---
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=(0, 18))
+        main.grid(row=2, column=0, sticky="nsew", padx=(20, 10), pady=(0, 18))
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(2, weight=1)
 
@@ -98,7 +112,7 @@ class VentasView(ctk.CTkFrame):
 
         # --- Columna derecha: panel de cobro ---
         panel = ctk.CTkFrame(self, fg_color=theme.CARD_BG, corner_radius=12)
-        panel.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=(0, 18))
+        panel.grid(row=2, column=1, sticky="nsew", padx=(10, 20), pady=(0, 18))
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(3, weight=1)
 
@@ -130,8 +144,97 @@ class VentasView(ctk.CTkFrame):
 
         self.winfo_toplevel().bind("<F12>", lambda _e: self._cobrar())
         self.winfo_toplevel().bind("<F2>", lambda _e: self._consultar_precio())
+        self.winfo_toplevel().bind("<F4>", lambda _e: self._alternar_caja())
         self._refrescar()
         self.after(120, self.entry_scan.focus_set)
+
+    # --- Cajas (una o dos en paralelo) --------------------------------------
+
+    @property
+    def carrito(self) -> Carrito:
+        """La caja activa. Todo el resto de la vista opera sobre 'el carrito'
+        sin saber que puede haber una segunda; acá se resuelve cuál es."""
+        return self.cajas[self.activa]
+
+    def _abrir_segunda(self) -> None:
+        """Abre la segunda caja (vacía) y salta a ella. Pensado para cuando un
+        cliente se demora pagando (transferencia) y otro ya espera con todo
+        listo: se aparca la venta actual y se atiende al que está pronto."""
+        if len(self.cajas) < self.MAX_CAJAS:
+            self.cajas.append(Carrito())
+        self._cambiar_caja(len(self.cajas) - 1)
+        mostrar_toast(self, "Segunda caja abierta", tipo="ok")
+
+    def _cerrar_segunda(self) -> None:
+        """Cierra la segunda caja y vuelve a la primera. Si tiene una venta sin
+        cobrar, pide confirmación antes de descartarla."""
+        if len(self.cajas) < 2:
+            return
+        if not self.cajas[1].esta_vacio() and not notificar.confirmar(
+                self, "Cerrar segunda caja",
+                "La segunda caja tiene una venta sin cobrar. ¿Descartarla y "
+                "cerrar la caja?", confirmar_txt="Sí, cerrar", cancelar_txt="No"):
+            return
+        del self.cajas[1]
+        self.activa = 0
+        self._refrescar()
+        self.entry_scan.focus_set()
+
+    def _cambiar_caja(self, indice: int) -> None:
+        if indice == self.activa or not (0 <= indice < len(self.cajas)):
+            self._refrescar_barra_cajas()
+            return
+        self.activa = indice
+        self._refrescar()
+        self.entry_scan.focus_set()
+
+    def _alternar_caja(self) -> None:
+        """F4: si hay dos cajas, salta a la otra; si hay una sola, abre la
+        segunda. Un único atajo para todo el flujo de dos clientes."""
+        if len(self.cajas) < 2:
+            self._abrir_segunda()
+        else:
+            self._cambiar_caja((self.activa + 1) % len(self.cajas))
+
+    def _refrescar_barra_cajas(self) -> None:
+        """Redibuja la barra de pestañas de cajas. Con una sola caja muestra un
+        botón discreto para abrir la segunda; con dos, una pestaña por caja
+        (con ítems/total aparcados) y el botón para cerrar la segunda."""
+        for w in self.barra_cajas.winfo_children():
+            w.destroy()
+
+        doble = len(self.cajas) > 1
+        for i, caja in enumerate(self.cajas):
+            activa = (i == self.activa)
+            texto = f"Caja {i + 1}"
+            if not caja.esta_vacio():
+                n = len(caja.items)
+                texto += f"  ·  {n} ít.  ·  {_money(caja.total)}"
+            ctk.CTkButton(
+                self.barra_cajas, text=texto, height=34, corner_radius=8,
+                font=theme.fuente(13, "bold" if activa else "normal"),
+                fg_color=theme.PRIMARY if activa else theme.GHOST_BTN_BG,
+                text_color="#FFFFFF" if activa else theme.ACCENT,
+                border_width=0 if activa else 1,
+                border_color=theme.GHOST_BTN_BORDER,
+                hover_color=theme.PRIMARY_HOVER if activa else theme.GHOST_BTN_HOVER,
+                command=lambda idx=i: self._cambiar_caja(idx)).pack(
+                    side="left", padx=(0, 8))
+
+        if doble:
+            ctk.CTkButton(
+                self.barra_cajas, text="✕  Cerrar segunda caja", height=34,
+                corner_radius=8, font=theme.fuente(13), fg_color="transparent",
+                text_color=theme.TXT_MUTED, hover_color=theme.GHOST,
+                command=self._cerrar_segunda).pack(side="left")
+        else:
+            ctk.CTkButton(
+                self.barra_cajas, text="＋  Segunda caja (F4)", height=34,
+                corner_radius=8, font=theme.fuente(13),
+                fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+                border_width=1, border_color=theme.GHOST_BTN_BORDER,
+                hover_color=theme.GHOST_BTN_HOVER,
+                command=self._abrir_segunda).pack(side="left")
 
     # --- Escaneo / agregado -------------------------------------------------
 
@@ -220,6 +323,7 @@ class VentasView(ctk.CTkFrame):
         n = len(self.carrito.items)
         self.lbl_total.configure(text=_money(total))
         self.lbl_count.configure(text=f"{n} producto{'s' if n != 1 else ''}")
+        self._refrescar_barra_cajas()
 
     def _fila_item(self, indice: int, item) -> None:
         fila = ctk.CTkFrame(self.tabla, fg_color="transparent")
