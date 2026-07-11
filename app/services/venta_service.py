@@ -33,6 +33,17 @@ def buscar_por_nombre(texto: str) -> list[Producto]:
         conn.close()
 
 
+def stock_actual(producto_id: str) -> Decimal:
+    """Stock disponible de un producto (para que la caja valide antes de
+    agregarlo al carrito). Si el producto no existe, devuelve 0."""
+    conn = db_local.connect()
+    try:
+        row = producto_repo.obtener(conn, producto_id)
+        return Decimal(str(row["stock_actual"])) if row is not None else Decimal("0")
+    finally:
+        conn.close()
+
+
 # --- Registro de la venta ---------------------------------------------------
 
 def registrar_venta(carrito: Carrito, pagos: list[Pago],

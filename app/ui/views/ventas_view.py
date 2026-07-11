@@ -25,6 +25,7 @@ from app.ui.dialogs.peso_dialog import PesoDialog
 from app.ui.dialogs.cobro_dialog import CobroDialog
 from app.ui.dialogs.consulta_precio_dialog import ConsultaPrecioDialog
 from app.ui.dialogs.cantidad_dialog import CantidadDialog
+from app.ui.dialogs.autorizacion_admin_dialog import AutorizacionAdminDialog
 
 
 def _money(d: Decimal) -> str:
@@ -177,8 +178,28 @@ class VentasView(ctk.CTkFrame):
             cantidad = kg
         else:
             cantidad = Decimal("1")
+        total = self.carrito.cantidad_de(producto.id) + cantidad
+        if not self._stock_permite(producto.id, producto.nombre, total,
+                                   producto.controla_stock):
+            return
         self.carrito.agregar(producto, cantidad)
         self._refrescar()
+
+    def _stock_permite(self, producto_id: str, descripcion: str,
+                       total_propuesto: Decimal, controla_stock: bool) -> bool:
+        """Valida que llegar a `total_propuesto` unidades del producto no supere
+        el stock. Solo se controla a los productos con `controla_stock`. Si se
+        supera el stock, bloquea y pide autorización de un administrador
+        (override): devuelve True solo si hay stock o un admin lo autoriza."""
+        if not controla_stock:
+            return True
+        disponible = venta_service.stock_actual(producto_id)
+        if total_propuesto <= disponible:
+            return True
+        motivo = (f"«{descripcion}» tiene {formato.numero(disponible)} en stock "
+                  f"y estás cargando {formato.numero(total_propuesto)}.\n"
+                  "Para vender por encima del stock se necesita un administrador.")
+        return bool(AutorizacionAdminDialog(self, motivo=motivo).mostrar())
 
     # --- Render del carrito -------------------------------------------------
 
@@ -251,7 +272,14 @@ class VentasView(ctk.CTkFrame):
 
     def _sumar(self, indice: int, delta: int) -> None:
         item = self.carrito.items[indice]
-        self.carrito.cambiar_cantidad(indice, item.cantidad + delta)
+        nueva = item.cantidad + delta
+        # Solo validamos stock al aumentar; bajar cantidad siempre se permite.
+        otros = self.carrito.cantidad_de(item.producto_id) - item.cantidad
+        if nueva > item.cantidad and not self._stock_permite(
+                item.producto_id, item.descripcion, otros + nueva,
+                item.controla_stock):
+            return
+        self.carrito.cambiar_cantidad(indice, nueva)
         self._refrescar()
         self.entry_scan.focus_set()
 
@@ -260,6 +288,11 @@ class VentasView(ctk.CTkFrame):
         nueva = CantidadDialog(self, item.descripcion, item.cantidad,
                                item.es_pesable).mostrar()
         if nueva is None:
+            return
+        otros = self.carrito.cantidad_de(item.producto_id) - item.cantidad
+        if nueva > item.cantidad and not self._stock_permite(
+                item.producto_id, item.descripcion, otros + nueva,
+                item.controla_stock):
             return
         self.carrito.cambiar_cantidad(indice, nueva)
         self._refrescar()

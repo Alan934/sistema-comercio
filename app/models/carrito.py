@@ -61,6 +61,12 @@ class Carrito:
         self.items.append(item)
         return item
 
+    def cantidad_de(self, producto_id: str) -> Decimal:
+        """Total de unidades (o kg) ya cargadas de un producto, sumando todas
+        las líneas del carrito (un pesable puede ocupar varias líneas)."""
+        return sum((i.cantidad for i in self.items
+                    if i.producto_id == producto_id), Decimal("0"))
+
     def quitar(self, indice: int) -> None:
         del self.items[indice]
 
