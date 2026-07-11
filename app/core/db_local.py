@@ -11,7 +11,7 @@ import sqlite3
 from datetime import date
 
 from config import settings
-from app.core.utils import ahora_iso, parse_fecha
+from app.core.utils import ahora_iso, parse_fecha, sin_acentos
 
 
 def connect() -> sqlite3.Connection:
@@ -22,6 +22,9 @@ def connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.execute("PRAGMA synchronous = NORMAL;")
+    # Búsqueda por nombre indiferente al acento: sin_acentos('Azúcar') -> 'Azucar'.
+    # deterministic=True permite usarla en índices/consultas cacheadas.
+    conn.create_function("sin_acentos", 1, sin_acentos, deterministic=True)
     return conn
 
 

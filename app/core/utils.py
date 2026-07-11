@@ -1,4 +1,5 @@
 """Utilidades transversales: generación de IDs, timestamps y texto."""
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -14,6 +15,18 @@ _PALABRAS_MINUSCULAS = {
 def nuevo_id() -> str:
     """ID único global (UUID4) para offline-first. Evita colisiones local<->nube."""
     return str(uuid.uuid4())
+
+
+def sin_acentos(texto: str) -> str:
+    """Quita tildes y diacríticos de un texto, para búsquedas indiferentes al
+    acento (ej.: 'azu' encuentra 'Azúcar', 'nino' encuentra 'Niño'). Descompone
+    en NFD y descarta las marcas combinantes (categoría Unicode 'Mn'); conserva
+    las mayúsculas/minúsculas. Se usa tanto en Python como registrada en SQLite
+    (ver db_local.connect) para que la comparación sea consistente en todos lados."""
+    if not texto:
+        return ""
+    nfd = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
 
 
 def _capitalizar_palabra(palabra: str) -> str:

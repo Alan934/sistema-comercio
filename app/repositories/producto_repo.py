@@ -216,10 +216,13 @@ def recalcular_precio(conn: sqlite3.Connection, producto_id: str) -> None:
 
 def buscar_por_nombre(conn: sqlite3.Connection, texto: str,
                       limite: int = 20) -> list[Producto]:
-    """Búsqueda parcial por nombre (para el buscador manual del POS)."""
+    """Búsqueda parcial por nombre (para el buscador manual del POS). Indiferente
+    al acento: se comparan ambos lados sin tildes (sin_acentos, registrada en la
+    conexión), así 'azu' encuentra 'Azúcar'. LIKE ya ignora mayúsculas en ASCII."""
     rows = conn.execute(
         f"SELECT {_COLS} FROM productos "
-        "WHERE nombre LIKE ? AND activo = 1 ORDER BY nombre LIMIT ?",
+        "WHERE sin_acentos(nombre) LIKE sin_acentos(?) AND activo = 1 "
+        "ORDER BY nombre LIMIT ?",
         (f"%{texto}%", limite),
     ).fetchall()
     return [_to_producto(r) for r in rows]

@@ -6,6 +6,7 @@ from math import ceil
 import customtkinter as ctk
 
 from app.core import formato
+from app.core.utils import sin_acentos
 
 from app.services import stock_service, compra_service, categoria_service
 from app.ui import theme
@@ -356,7 +357,7 @@ class StockView(ctk.CTkFrame):
     def _filtrar(self) -> list:
         """Aplica TODOS los filtros activos (combinables) sobre el catálogo y
         devuelve la lista ya ordenada."""
-        filtro = self.ent_buscar.get().strip().lower()
+        filtro = sin_acentos(self.ent_buscar.get().strip().lower())
         ubic = self.ent_ubic.get().strip().lower()
         cat = self._f_categoria.get()
         estado = self._f_estado.get()
@@ -364,7 +365,7 @@ class StockView(ctk.CTkFrame):
         cat_id = self._cat_por_nombre.get(cat)
         res = []
         for p in self._productos:
-            if filtro and filtro not in p.nombre.lower():
+            if filtro and filtro not in sin_acentos(p.nombre.lower()):
                 continue
             if ubic and ubic not in (p.ubicacion or "").lower():
                 continue
