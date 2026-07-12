@@ -108,6 +108,13 @@ class AppWindow(ctk.CTk):
         self._hints = {}
         for clave in secciones:
             vista = constructores[clave]()
+            # Fondo OPACO (mismo color que el área de contenido): las vistas se
+            # apilan en la misma celda y se alternan con tkraise. Con fondo
+            # "transparent" la vista de adelante no tapa a la de atrás, y mientras
+            # una vista lenta (ej. Stock, que dibuja muchas filas) termina de
+            # pintarse, se ve la vista anterior transparentándose por detrás. Un
+            # fondo opaco del mismo color se ve igual pero oculta a las demás.
+            vista.configure(fg_color=theme.APP_BG)
             vista.grid(row=0, column=0, sticky="nsew")
             self._vistas[clave] = vista
             btn = ctk.CTkButton(
