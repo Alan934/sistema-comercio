@@ -1,7 +1,7 @@
 """Auto-actualización del programa vía GitHub Releases (acceso anónimo).
 
 Flujo:
-  buscar_actualizacion() -> consulta la última release en GitHub y compara
+  buscar_actualizacion() -> averigua la última release en GitHub y compara
                             versión con la actual (settings.APP_VERSION).
   aplicar_actualizacion() -> descarga el .exe nuevo al lado del actual, escribe
                              un .bat que espera el cierre de la app, reemplaza
@@ -10,9 +10,16 @@ Flujo:
 Windows no deja sobreescribir un .exe en uso: por eso el reemplazo lo hace el
 .bat una vez que la app cerró.
 
-Usa solo la librería estándar (urllib/json), sin dependencias extra.
+IMPORTANTE — por qué NO se usa api.github.com:
+  La API REST de GitHub limita a 60 consultas/hora POR IP para accesos anónimos.
+  Detrás del CGNAT de muchos ISP, esa IP se comparte con cientos de usuarios, así
+  que el cupo se agota con tráfico ajeno y el updater fallaba con "límite de
+  consultas alcanzado". En cambio, las URL públicas de github.com que usamos acá
+  (el redirect de /releases/latest y la descarga /releases/latest/download/...)
+  NO están sujetas a ese límite. Así la actualización funciona siempre.
+
+Usa solo la librería estándar (urllib), sin dependencias extra.
 """
-import json
 import re
 import subprocess
 import sys
@@ -23,16 +30,24 @@ from pathlib import Path
 from config import settings
 
 REPO = "Alan934/sistema-comercio"
-API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-_HEADERS = {
-    "Accept": "application/vnd.github+json",
-    "User-Agent": "Kiosko-Updater",
-}
+# El redirect de esta URL apunta a .../releases/tag/vX.Y.Z (de ahí sale la
+# versión). La descarga siempre baja el asset de la última release publicada.
+LATEST_URL = f"https://github.com/{REPO}/releases/latest"
+ASSET_URL = f"https://github.com/{REPO}/releases/latest/download/Kiosko.exe"
+_HEADERS = {"User-Agent": "Kiosko-Updater"}
 CREATE_NEW_CONSOLE = 0x00000010
 
 
 class UpdaterError(Exception):
     pass
+
+
+class _SinRedireccion(urllib.request.HTTPRedirectHandler):
+    """No sigue el 302 de /releases/latest: así podemos leer el tag desde el
+    header Location sin una request extra (y sin tocar api.github.com)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def esta_compilado() -> bool:
@@ -46,56 +61,62 @@ def _a_tupla(version: str) -> tuple:
     return tuple(int(n) for n in numeros) if numeros else (0,)
 
 
+def _tag_de_location(location: str) -> str:
+    """De 'https://github.com/.../releases/tag/v0.8.1' saca 'v0.8.1'."""
+    return location.rstrip("/").rsplit("/", 1)[-1] if location else ""
+
+
 def buscar_actualizacion() -> dict:
-    """Consulta GitHub. Nunca lanza: devuelve un dict con el resultado.
-      {ok:True, hay:bool, version, url, tam, notas[, motivo]}
+    """Averigua la última release leyendo el redirect de /releases/latest (sin
+    api.github.com, así no hay límite de consultas). Nunca lanza: devuelve un
+    dict con el resultado.
+      {ok:True, hay:True, version, url}
+      {ok:True, hay:False, motivo}
       {ok:False, motivo}
     """
     try:
-        req = urllib.request.Request(API_URL, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = json.load(resp)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return {"ok": True, "hay": False,
-                    "motivo": "Todavía no hay versiones publicadas."}
-        if e.code == 403 and e.headers.get("X-RateLimit-Remaining") == "0":
-            return {"ok": False,
-                    "motivo": "Se alcanzó el límite de consultas a GitHub. "
-                              "Probá de nuevo en un rato."}
-        return {"ok": False, "motivo": f"GitHub respondió {e.code}."}
+        req = urllib.request.Request(LATEST_URL, headers=_HEADERS)
+        opener = urllib.request.build_opener(_SinRedireccion)
+        try:
+            # Sin releases, GitHub responde 200 con una página; el 302 con el tag
+            # solo aparece cuando hay una publicada.
+            resp = opener.open(req, timeout=8)
+            location = resp.headers.get("Location", "")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return {"ok": True, "hay": False,
+                        "motivo": "Todavía no hay versiones publicadas."}
+            if 300 <= e.code < 400:
+                location = e.headers.get("Location", "")
+            else:
+                return {"ok": False, "motivo": f"GitHub respondió {e.code}."}
     except (urllib.error.URLError, TimeoutError, OSError):
         return {"ok": False, "motivo": "Sin conexión a internet."}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"Error inesperado: {e}"}
 
-    tag = data.get("tag_name", "")
+    tag = _tag_de_location(location)
+    if not tag:
+        return {"ok": True, "hay": False,
+                "motivo": "Todavía no hay versiones publicadas."}
+
     nueva = _a_tupla(tag)
     actual = _a_tupla(settings.APP_VERSION)
-    asset = next((a for a in data.get("assets", [])
-                  if a.get("name", "").lower().endswith(".exe")), None)
-
     if nueva <= actual:
         return {"ok": True, "hay": False,
                 "motivo": f"Ya tenés la última versión (v{settings.APP_VERSION})."}
-    if asset is None:
-        return {"ok": True, "hay": False,
-                "motivo": f"Hay una versión nueva ({tag}) pero el release no "
-                          "incluye el .exe."}
-    return {
-        "ok": True, "hay": True,
-        "version": tag.lstrip("vV"),
-        "url": asset["browser_download_url"],
-        "tam": asset.get("size", 0),
-        "notas": data.get("body", "") or "",
-    }
+    return {"ok": True, "hay": True, "version": tag.lstrip("vV"), "url": ASSET_URL}
 
 
-def _descargar(url: str, destino: Path, tam_esperado: int = 0) -> None:
+def _descargar(url: str, destino: Path) -> None:
+    """Descarga el .exe y verifica la integridad contra el Content-Length que
+    informa el servidor (no hace falta la API para saber el tamaño)."""
     req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=120) as resp:
-        destino.write_bytes(resp.read())
-    if tam_esperado and destino.stat().st_size != tam_esperado:
+        esperado = int(resp.headers.get("Content-Length") or 0)
+        datos = resp.read()
+    destino.write_bytes(datos)
+    if esperado and destino.stat().st_size != esperado:
         destino.unlink(missing_ok=True)
         raise UpdaterError("La descarga quedó incompleta (tamaño no coincide).")
 
@@ -132,5 +153,5 @@ def aplicar_actualizacion(info: dict) -> None:
                            ".exe compilado.")
     actual = Path(sys.executable).resolve()
     nuevo = actual.with_name(f"{actual.stem}_nuevo{actual.suffix}")
-    _descargar(info["url"], nuevo, info.get("tam", 0))
+    _descargar(info["url"], nuevo)
     _lanzar_swap(actual, nuevo)
