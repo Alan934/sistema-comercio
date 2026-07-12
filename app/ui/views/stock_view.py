@@ -37,12 +37,17 @@ ANCHO_ACC = ANCHO_VENCIM + ANCHO_EDITAR
 # catálogo y el resultado se pagina.
 PAGE_SIZE = 50
 # Filas que se pintan por tanda antes de ceder el control al event loop (con
-# after). Mantiene la app responsiva mientras la tabla se llena: cada tanda
-# bloquea ~150 ms en vez de dibujar la página entera de golpe.
-FILAS_POR_TANDA = 25
+# after). Mantiene la app responsiva mientras la tabla se llena: con tandas
+# chicas cada bloqueo dura poco (~60 ms) y el tecleo del buscador se ve fluido
+# (si la tanda es grande, los caracteres tipeados aparecen "de a uno").
+FILAS_POR_TANDA = 10
 # Espera (ms) antes de re-dibujar al tipear en el buscador: evita reconstruir la
 # tabla en cada tecla (debounce).
 DEBOUNCE_MS = 250
+# Mínimo de letras para filtrar por nombre. Con menos, en vez de dibujar cientos
+# de filas (lo más caro) se muestra una pista y se espera a que la búsqueda sea
+# más específica; así tipear las primeras letras no traba la vista.
+MIN_BUSQUEDA = 3
 
 # --- Opciones de los filtros (los textos son también las claves) ------------
 CAT_TODAS = "Todas las categorías"
@@ -69,6 +74,9 @@ class StockView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         self._productos = []
+        # nombre normalizado (sin acentos, minúscula) por producto, precalculado
+        # en _recargar: filtrar por nombre no recalcula sin_acentos en cada tecla.
+        self._nombre_norm = {}
         self._venc_map = {}
         self._cat_por_nombre = {}   # nombre de categoría -> id (para el filtro)
         self._pagina = 0            # página actual (0-based)
@@ -275,7 +283,7 @@ class StockView(ctk.CTkFrame):
             self.ent_buscar.delete(0, "end")
             self.ent_buscar.insert(0, prod.nombre)
             self._pagina = 0
-            self._render_tabla()
+            self._render_tabla(forzar_nombre=True)
             stock_txt = (f"{formato.numero(prod.stock_actual)} kg"
                          if prod.es_pesable else formato.numero(prod.stock_actual))
             mostrar_toast(self, f"{prod.nombre} · stock {stock_txt}", tipo="ok")
@@ -299,6 +307,8 @@ class StockView(ctk.CTkFrame):
 
     def _recargar(self) -> None:
         self._productos = stock_service.listar_productos()
+        self._nombre_norm = {p.id: sin_acentos(p.nombre.lower())
+                             for p in self._productos}
         self._venc_map = stock_service.vencimientos_por_producto(7)
         self._auto_ubic.set_opciones(stock_service.listar_ubicaciones())
         self._refrescar_categorias()
@@ -357,7 +367,10 @@ class StockView(ctk.CTkFrame):
     def _filtrar(self) -> list:
         """Aplica TODOS los filtros activos (combinables) sobre el catálogo y
         devuelve la lista ya ordenada."""
-        filtro = sin_acentos(self.ent_buscar.get().strip().lower())
+        nombre_raw = self.ent_buscar.get().strip()
+        # El filtro por nombre solo se aplica a partir de MIN_BUSQUEDA letras.
+        filtro = (sin_acentos(nombre_raw.lower())
+                  if len(nombre_raw) >= MIN_BUSQUEDA else "")
         ubic = self.ent_ubic.get().strip().lower()
         cat = self._f_categoria.get()
         estado = self._f_estado.get()
@@ -365,7 +378,7 @@ class StockView(ctk.CTkFrame):
         cat_id = self._cat_por_nombre.get(cat)
         res = []
         for p in self._productos:
-            if filtro and filtro not in sin_acentos(p.nombre.lower()):
+            if filtro and filtro not in self._nombre_norm.get(p.id, ""):
                 continue
             if ubic and ubic not in (p.ubicacion or "").lower():
                 continue
@@ -414,9 +427,22 @@ class StockView(ctk.CTkFrame):
         """Programa el re-dibujo tras una pausa de tecleo, cancelando el anterior
         (debounce). Al tipear se vuelve a la 1ra página."""
         self._pagina = 0
+        # Corta cualquier pintado en tandas que siga en curso de un tecleo
+        # anterior: mientras pinta, el hilo de UI está ocupado y los caracteres
+        # nuevos tardan en aparecer. Cancelarlo deja el tecleo fluido; el
+        # re-dibujo definitivo se dispara al terminar el debounce.
+        self._cancelar_pintado()
         if self._debounce_id is not None:
             self.after_cancel(self._debounce_id)
         self._debounce_id = self.after(DEBOUNCE_MS, self._render_tabla)
+
+    def _hay_otros_filtros(self) -> bool:
+        """True si hay algún filtro activo además del nombre (ubicación,
+        categoría, estado o vencimiento)."""
+        return bool(self.ent_ubic.get().strip()
+                    or self._f_categoria.get() != CAT_TODAS
+                    or self._f_estado.get() != EST_TODOS
+                    or self._f_venc.get() != VENC_TODOS)
 
     def _cancelar_pintado(self) -> None:
         """Cancela el pintado en tandas que pudiera estar en curso."""
@@ -424,11 +450,28 @@ class StockView(ctk.CTkFrame):
             self.after_cancel(self._pintar_id)
             self._pintar_id = None
 
-    def _render_tabla(self) -> None:
+    def _render_tabla(self, forzar_nombre: bool = False) -> None:
         self._debounce_id = None
         self._cancelar_pintado()
         for w in self.tabla.winfo_children():
             w.destroy()
+        # Con 1-2 letras en el nombre y sin otros filtros, no dibujamos cientos
+        # de filas (lo más caro): mostramos una pista y esperamos a que la
+        # búsqueda sea más específica. El escaneo fija un nombre exacto y pasa
+        # forzar_nombre=True para no quedar atrapado en esta pista.
+        nombre = self.ent_buscar.get().strip()
+        if (not forzar_nombre and 0 < len(nombre) < MIN_BUSQUEDA
+                and not self._hay_otros_filtros()):
+            self._visibles = []
+            self.lbl_pagina.configure(text="")
+            self.btn_prev.configure(state="disabled")
+            self.btn_next.configure(state="disabled")
+            ctk.CTkLabel(
+                self.tabla,
+                text=f"Escribí al menos {MIN_BUSQUEDA} letras para buscar por "
+                     "nombre…", font=theme.fuente(14),
+                text_color=theme.TXT_MUTED, justify="center").pack(pady=36)
+            return
         self._visibles = self._filtrar()
         total = len(self._visibles)
         paginas = max(1, ceil(total / PAGE_SIZE))
