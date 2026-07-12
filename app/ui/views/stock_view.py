@@ -88,6 +88,11 @@ class StockView(ctk.CTkFrame):
         # True cuando el campo de escaneo muestra un código ya buscado: el
         # próximo carácter nuevo arranca un código distinto (no concatena).
         self._scan_listo = False
+        # Al escanear un código, la tabla muestra ESE producto exacto (por id),
+        # no un filtro por nombre: así aparece aunque su nombre sea muy corto
+        # (1-2 letras) o sea subcadena de otros. Cualquier acción de filtrado
+        # del usuario lo vuelve a None y retoma la búsqueda normal.
+        self._solo_producto_id = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(4, weight=1)   # la tabla es la fila que se estira
@@ -259,6 +264,7 @@ class StockView(ctk.CTkFrame):
         dejar la tabla filtrada por un producto sin código a la vista."""
         if not self.ent_scan.get().strip() and self.ent_buscar.get().strip():
             self.ent_buscar.delete(0, "end")
+            self._solo_producto_id = None
             self._pagina = 0
             self._render_tabla()
 
@@ -282,8 +288,9 @@ class StockView(ctk.CTkFrame):
             self.ent_ubic.delete(0, "end")
             self.ent_buscar.delete(0, "end")
             self.ent_buscar.insert(0, prod.nombre)
+            self._solo_producto_id = prod.id
             self._pagina = 0
-            self._render_tabla(forzar_nombre=True)
+            self._render_tabla()
             stock_txt = (f"{formato.numero(prod.stock_actual)} kg"
                          if prod.es_pesable else formato.numero(prod.stock_actual))
             mostrar_toast(self, f"{prod.nombre} · stock {stock_txt}", tipo="ok")
@@ -306,6 +313,7 @@ class StockView(ctk.CTkFrame):
     # --- Datos --------------------------------------------------------------
 
     def _recargar(self) -> None:
+        self._solo_producto_id = None
         self._productos = stock_service.listar_productos()
         self._nombre_norm = {p.id: sin_acentos(p.nombre.lower())
                              for p in self._productos}
@@ -349,6 +357,7 @@ class StockView(ctk.CTkFrame):
 
     def _filtro_inmediato(self) -> None:
         """Un filtro cambió (dropdown/ubicación): vuelve a la 1ra página y dibuja."""
+        self._solo_producto_id = None
         self._pagina = 0
         self._render_tabla()
 
@@ -357,6 +366,7 @@ class StockView(ctk.CTkFrame):
         self.ent_ubic.delete(0, "end")
         self.ent_scan.delete(0, "end")
         self._scan_listo = False
+        self._solo_producto_id = None
         self._f_categoria.set(CAT_TODAS)
         self._f_estado.set(EST_TODOS)
         self._f_venc.set(VENC_TODOS)
@@ -367,10 +377,18 @@ class StockView(ctk.CTkFrame):
     def _filtrar(self) -> list:
         """Aplica TODOS los filtros activos (combinables) sobre el catálogo y
         devuelve la lista ya ordenada."""
+        # Vista de un solo producto (tras escanear su código): se muestra ese
+        # producto exacto, sin importar el largo del nombre ni los demás filtros.
+        if self._solo_producto_id is not None:
+            return [p for p in self._productos
+                    if p.id == self._solo_producto_id]
         nombre_raw = self.ent_buscar.get().strip()
-        # El filtro por nombre solo se aplica a partir de MIN_BUSQUEDA letras.
-        filtro = (sin_acentos(nombre_raw.lower())
-                  if len(nombre_raw) >= MIN_BUSQUEDA else "")
+        nombre_q = sin_acentos(nombre_raw.lower())
+        # Con MIN_BUSQUEDA+ letras se busca por subcadena; con 1-2 letras solo se
+        # acepta la coincidencia EXACTA del nombre: así no se traen cientos de
+        # filas por un prefijo corto, pero un producto de nombre muy corto
+        # (ej. "Te") igual se encuentra tecleándolo.
+        por_substring = len(nombre_raw) >= MIN_BUSQUEDA
         ubic = self.ent_ubic.get().strip().lower()
         cat = self._f_categoria.get()
         estado = self._f_estado.get()
@@ -378,8 +396,10 @@ class StockView(ctk.CTkFrame):
         cat_id = self._cat_por_nombre.get(cat)
         res = []
         for p in self._productos:
-            if filtro and filtro not in self._nombre_norm.get(p.id, ""):
-                continue
+            if nombre_q:
+                nn = self._nombre_norm.get(p.id, "")
+                if (nombre_q not in nn) if por_substring else (nn != nombre_q):
+                    continue
             if ubic and ubic not in (p.ubicacion or "").lower():
                 continue
             if cat == CAT_SIN:
@@ -427,6 +447,9 @@ class StockView(ctk.CTkFrame):
         """Programa el re-dibujo tras una pausa de tecleo, cancelando el anterior
         (debounce). Al tipear se vuelve a la 1ra página."""
         self._pagina = 0
+        # Tipear en el buscador retoma la búsqueda normal (sale de la vista de un
+        # solo producto que deja el escaneo).
+        self._solo_producto_id = None
         # Corta cualquier pintado en tandas que siga en curso de un tecleo
         # anterior: mientras pinta, el hilo de UI está ocupado y los caracteres
         # nuevos tardan en aparecer. Cancelarlo deja el tecleo fluido; el
@@ -450,19 +473,20 @@ class StockView(ctk.CTkFrame):
             self.after_cancel(self._pintar_id)
             self._pintar_id = None
 
-    def _render_tabla(self, forzar_nombre: bool = False) -> None:
+    def _render_tabla(self) -> None:
         self._debounce_id = None
         self._cancelar_pintado()
         for w in self.tabla.winfo_children():
             w.destroy()
-        # Con 1-2 letras en el nombre y sin otros filtros, no dibujamos cientos
-        # de filas (lo más caro): mostramos una pista y esperamos a que la
-        # búsqueda sea más específica. El escaneo fija un nombre exacto y pasa
-        # forzar_nombre=True para no quedar atrapado en esta pista.
+        self._visibles = self._filtrar()
+        # Con 1-2 letras, sin otros filtros y sin coincidencia EXACTA de nombre,
+        # mostramos una pista en vez de dibujar cientos de filas (lo más caro).
+        # Si el nombre corto coincide exacto con un producto (ej. "Te"), _filtrar
+        # ya lo trajo y se dibuja normal. El escaneo (self._solo_producto_id)
+        # tampoco cae acá: muestra el producto exacto.
         nombre = self.ent_buscar.get().strip()
-        if (not forzar_nombre and 0 < len(nombre) < MIN_BUSQUEDA
-                and not self._hay_otros_filtros()):
-            self._visibles = []
+        if (self._solo_producto_id is None and 0 < len(nombre) < MIN_BUSQUEDA
+                and not self._hay_otros_filtros() and not self._visibles):
             self.lbl_pagina.configure(text="")
             self.btn_prev.configure(state="disabled")
             self.btn_next.configure(state="disabled")
@@ -472,7 +496,6 @@ class StockView(ctk.CTkFrame):
                      "nombre…", font=theme.fuente(14),
                 text_color=theme.TXT_MUTED, justify="center").pack(pady=36)
             return
-        self._visibles = self._filtrar()
         total = len(self._visibles)
         paginas = max(1, ceil(total / PAGE_SIZE))
         self._pagina = max(0, min(self._pagina, paginas - 1))
