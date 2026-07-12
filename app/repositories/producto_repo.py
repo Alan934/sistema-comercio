@@ -218,12 +218,24 @@ def buscar_por_nombre(conn: sqlite3.Connection, texto: str,
                       limite: int = 20) -> list[Producto]:
     """Búsqueda parcial por nombre (para el buscador manual del POS). Indiferente
     al acento: se comparan ambos lados sin tildes (sin_acentos, registrada en la
-    conexión), así 'azu' encuentra 'Azúcar'. LIKE ya ignora mayúsculas en ASCII."""
+    conexión), así 'azu' encuentra 'Azúcar'. LIKE ya ignora mayúsculas en ASCII.
+
+    Ordena por relevancia y no solo alfabéticamente: primero la coincidencia
+    EXACTA, después las que EMPIEZAN con el texto y al final las que solo lo
+    contienen. Así un producto de nombre corto (ej. 'Te') aparece arriba en vez
+    de quedar enterrado entre los muchos que lo contienen como subcadena
+    ('Aceite', 'Cepita', …) y caer fuera de las primeras sugerencias."""
     rows = conn.execute(
         f"SELECT {_COLS} FROM productos "
-        "WHERE sin_acentos(nombre) LIKE sin_acentos(?) AND activo = 1 "
-        "ORDER BY nombre LIMIT ?",
-        (f"%{texto}%", limite),
+        "WHERE sin_acentos(nombre) LIKE sin_acentos(:sub) AND activo = 1 "
+        "ORDER BY "
+        "  CASE WHEN sin_acentos(nombre) LIKE sin_acentos(:exacto) THEN 0 "
+        "       WHEN sin_acentos(nombre) LIKE sin_acentos(:prefijo) THEN 1 "
+        "       ELSE 2 END, "
+        "  nombre "
+        "LIMIT :limite",
+        {"sub": f"%{texto}%", "exacto": texto, "prefijo": f"{texto}%",
+         "limite": limite},
     ).fetchall()
     return [_to_producto(r) for r in rows]
 
