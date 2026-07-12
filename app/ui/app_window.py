@@ -220,46 +220,63 @@ class AppWindow(ctk.CTk):
         if self._cargando:
             return
         self._cargando = True
+        self._activa = clave
+        vista = self._vistas[clave]
+
+        # 1) Feedback inmediato del click: resaltar el botón y mostrar el
+        #    overlay "Cargando…". Forzamos el repintado ANTES de reconstruir
+        #    la tabla (que bloquea un momento) para que el usuario vea que
+        #    entró ya.
+        for k, btn in self._botones.items():
+            if k == clave:
+                btn.configure(fg_color=theme.NAV_ACTIVE_BG,
+                              text_color="#FFFFFF")
+                self._hints[k].configure(fg_color=theme.NAV_ACTIVE_BG,
+                                         text_color="#FFFFFF")
+            else:
+                btn.configure(fg_color="transparent",
+                              text_color=theme.NAV_TXT_INACT)
+                self._hints[k].configure(fg_color=theme.SIDEBAR_BG,
+                                         text_color=theme.NAV_TXT_INACT)
+        self._overlay_lbl.configure(
+            text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
+        self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._overlay.lift()
+        self.update_idletasks()  # pinta botón + overlay antes de bloquear
+
+        # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
+        #    tapado por el overlay para que no se vea el reacomodo de columnas.
         try:
-            self._activa = clave
-            vista = self._vistas[clave]
-
-            # 1) Feedback inmediato del click: resaltar el botón y mostrar el
-            #    overlay "Cargando…". Forzamos el repintado ANTES de reconstruir
-            #    la tabla (que bloquea un momento) para que el usuario vea que
-            #    entró ya.
-            for k, btn in self._botones.items():
-                if k == clave:
-                    btn.configure(fg_color=theme.NAV_ACTIVE_BG,
-                                  text_color="#FFFFFF")
-                    self._hints[k].configure(fg_color=theme.NAV_ACTIVE_BG,
-                                             text_color="#FFFFFF")
-                else:
-                    btn.configure(fg_color="transparent",
-                                  text_color=theme.NAV_TXT_INACT)
-                    self._hints[k].configure(fg_color=theme.SIDEBAR_BG,
-                                             text_color=theme.NAV_TXT_INACT)
-            self._overlay_lbl.configure(
-                text=f"⏳   Cargando {self._etiquetas.get(clave, '')}…")
-            self._overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-            self._overlay.lift()
-            self.update_idletasks()  # pinta botón + overlay antes de bloquear
-
-            # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
-            #    tapado por el overlay para que no se vea el reacomodo de columnas.
             if hasattr(vista, "al_mostrar"):
                 vista.al_mostrar()
             vista.update_idletasks()
-
-            # 3) Revelar la vista ya armada y quitar el overlay.
             vista.tkraise()
-            self._overlay.place_forget()
-        finally:
-            # Descarta la ráfaga de clicks encolados durante la carga: al
-            # procesarlos ahora, el guard (aún en True) los rechaza. Recién
-            # después liberamos la bandera.
-            self.update()
-            self._cargando = False
+        except Exception:
+            self._terminar_transicion()
+            raise
+
+        # 3) Quitar el overlay recién cuando la vista TERMINÓ de pintar. Stock
+        #    dibuja sus filas en tandas (para no congelarse); si sacáramos el
+        #    overlay ya, se verían las filas apareciendo de a poco. Mientras
+        #    pinta seguimos "cargando" (bloquea los clicks encolados) y el
+        #    overlay tapa el llenado, así aparece la tabla ya completa.
+        self._espera_pintado = 0
+        self._ocultar_overlay_si_listo(vista)
+
+    def _ocultar_overlay_si_listo(self, vista) -> None:
+        """Espera a que la vista deje de pintar en tandas para sacar el overlay.
+        Tope de seguridad (~4 s) por si algo quedara pintando, para no dejar el
+        overlay ni el guard trabados."""
+        pinta = getattr(vista, "esta_pintando", None)
+        if pinta is not None and pinta() and self._espera_pintado < 130:
+            self._espera_pintado += 1
+            self.after(30, lambda: self._ocultar_overlay_si_listo(vista))
+            return
+        self._terminar_transicion()
+
+    def _terminar_transicion(self) -> None:
+        self._overlay.place_forget()
+        self._cargando = False
 
     def _hint_hover(self, clave: str, entrando: bool) -> None:
         """Acompaña el hover del botón: pinta el fondo de la pista con el color

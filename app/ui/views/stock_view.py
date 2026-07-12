@@ -473,6 +473,12 @@ class StockView(ctk.CTkFrame):
             self.after_cancel(self._pintar_id)
             self._pintar_id = None
 
+    def esta_pintando(self) -> bool:
+        """True mientras quedan filas por pintar en tandas. La ventana lo consulta
+        para mantener el overlay 'Cargando…' hasta que la tabla esté completa (así
+        no se ven las filas apareciendo de a tandas al entrar a Stock)."""
+        return self._pintar_id is not None
+
     def _render_tabla(self) -> None:
         self._debounce_id = None
         self._cancelar_pintado()
