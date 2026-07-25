@@ -133,6 +133,7 @@ nunca lo pisa.
 | "Windows protegió su PC" al abrir | Normal (exe sin firmar): *Más información → Ejecutar de todas formas*. |
 | No sincroniza | Revisar internet y que el `.env` tenga bien `NEON_DATABASE_URL`. Igual sigue vendiendo offline. |
 | "Buscar actualización" dice límite alcanzado | GitHub limita consultas anónimas (60/hora por IP). Esperar un rato. |
+| "Failed to load Python DLL … python313.dll" justo al actualizar | El antivirus estaba escaneando el `.exe` recién bajado cuando arrancó. **La actualización sí se aplicó**: cerrar el cartel y abrir `Kiosko.exe` a mano. Desde v0.9.1 el actualizador espera unos segundos antes de reabrir para que no pase. Si se repite, agregar la carpeta `C:\Kiosko\` como excepción del antivirus. |
 | Quiero empezar de cero | Cerrar la app y borrar `data\kiosko.db`. Al reabrir se crea vacía. |
 | Mover la app a otra PC | Copiar toda la carpeta `C:\Kiosko\` (exe + .env + data). |
 

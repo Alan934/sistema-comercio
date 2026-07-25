@@ -122,20 +122,63 @@ def _descargar(url: str, destino: Path) -> None:
 
 
 def _lanzar_swap(actual: Path, nuevo: Path) -> None:
-    """Escribe y lanza el .bat que reemplaza el .exe tras cerrar la app."""
+    """Escribe y lanza el .bat que reemplaza el .exe tras cerrar la app.
+
+    Las dos pausas no son decorativas:
+      - Tras cerrar la app, el bootloader de PyInstaller todavía está borrando
+        su carpeta %TEMP%\\_MEIxxxxxx; moverle el .exe encima en ese instante
+        puede fallar por archivo en uso.
+      - Tras el move, el .exe es un archivo recién creado y el antivirus lo
+        escanea en ese momento. Si lo lanzamos ahí nomás, el bootloader extrae
+        python313.dll a %TEMP% y el LoadLibrary choca con el escaneo:
+        "Failed to load Python DLL ... No se puede encontrar el módulo
+        especificado". Abrirlo a mano después siempre funciona, justamente
+        porque el escaneo ya terminó.
+
+    Las esperas usan 'ping -n' y no 'timeout': timeout aborta con "No es
+    compatible la redirección de entradas" si la consola no tiene stdin real,
+    y en ese caso no esperaría nada — que es exactamente el bug a evitar.
+    """
     nombre = actual.name
     bat = actual.with_name("_actualizar.bat")
     contenido = (
         "@echo off\r\n"
         "chcp 65001 >nul\r\n"
         f"echo Actualizando {nombre}... no cierres esta ventana.\r\n"
+        "\r\n"
+        "rem --- 1) Esperar a que la app cierre del todo -------------------\r\n"
         ":esperar\r\n"
         f'tasklist /FI "IMAGENAME eq {nombre}" 2>nul | find /I "{nombre}" >nul\r\n'
         "if not errorlevel 1 (\r\n"
-        "  timeout /t 1 /nobreak >nul\r\n"
+        "  ping -n 2 127.0.0.1 >nul\r\n"
         "  goto esperar\r\n"
         ")\r\n"
-        f'move /Y "{nuevo}" "{actual}" >nul\r\n'
+        "ping -n 3 127.0.0.1 >nul\r\n"
+        "\r\n"
+        "rem --- 2) Reemplazar el .exe (reintenta si sigue tomado) ---------\r\n"
+        "set INTENTOS=0\r\n"
+        ":mover\r\n"
+        f'move /Y "{nuevo}" "{actual}" >nul 2>&1\r\n'
+        "if not errorlevel 1 goto movido\r\n"
+        "set /a INTENTOS+=1\r\n"
+        "if %INTENTOS% GEQ 10 (\r\n"
+        "  echo.\r\n"
+        "  echo No se pudo reemplazar el programa: el archivo sigue en uso.\r\n"
+        f'  echo Cerra {nombre} y volve a tocar "Buscar actualizacion".\r\n'
+        "  echo.\r\n"
+        "  pause\r\n"
+        f'  start "" "{actual}"\r\n'
+        '  del "%~f0"\r\n'
+        "  exit /b 1\r\n"
+        ")\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        "goto mover\r\n"
+        ":movido\r\n"
+        "\r\n"
+        "rem --- 3) Dejar que el antivirus termine de escanear el .exe -----\r\n"
+        "echo Verificando el archivo descargado...\r\n"
+        "ping -n 7 127.0.0.1 >nul\r\n"
+        "\r\n"
         f'start "" "{actual}"\r\n'
         'del "%~f0"\r\n'
     )
