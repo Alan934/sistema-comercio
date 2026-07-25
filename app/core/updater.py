@@ -20,6 +20,7 @@ IMPORTANTE — por qué NO se usa api.github.com:
 
 Usa solo la librería estándar (urllib), sin dependencias extra.
 """
+import os
 import re
 import subprocess
 import sys
@@ -36,6 +37,27 @@ LATEST_URL = f"https://github.com/{REPO}/releases/latest"
 ASSET_URL = f"https://github.com/{REPO}/releases/latest/download/Kiosko.exe"
 _HEADERS = {"User-Agent": "Kiosko-Updater"}
 CREATE_NEW_CONSOLE = 0x00000010
+
+# Variables que el bootloader de PyInstaller le pasa a sus procesos hijos. Hay
+# que sacarlas antes de relanzar el .exe: si las hereda, el bootloader nuevo
+# cree que es el hijo del bootloader que acaba de morir, no extrae nada y
+# busca python313.dll en la carpeta %TEMP%\_MEIxxxxxx del proceso viejo, que
+# ya fue borrada. Eso da "Failed to load Python DLL ... No se puede encontrar
+# el módulo especificado" (y abrirlo a mano después funciona, porque desde el
+# Explorador el entorno viene limpio).
+_VARS_PYINSTALLER = (
+    "_PYI_APPLICATION_HOME_DIR",   # PyInstaller 6.x: la carpeta _MEI
+    "_PYI_ARCHIVE_FILE",
+    "_PYI_PARENT_PROCESS_LEVEL",
+    "_PYI_SPLASH_IPC",
+    "_MEIPASS2",                   # PyInstaller 5.x y anteriores
+)
+
+
+def _entorno_limpio() -> dict:
+    """Copia del entorno sin los rastros del bootloader (ver _VARS_PYINSTALLER)."""
+    return {k: v for k, v in os.environ.items()
+            if k not in _VARS_PYINSTALLER and not k.startswith("_PYI_")}
 
 
 class UpdaterError(Exception):
@@ -124,20 +146,15 @@ def _descargar(url: str, destino: Path) -> None:
 def _lanzar_swap(actual: Path, nuevo: Path) -> None:
     """Escribe y lanza el .bat que reemplaza el .exe tras cerrar la app.
 
-    Las dos pausas no son decorativas:
-      - Tras cerrar la app, el bootloader de PyInstaller todavía está borrando
-        su carpeta %TEMP%\\_MEIxxxxxx; moverle el .exe encima en ese instante
-        puede fallar por archivo en uso.
-      - Tras el move, el .exe es un archivo recién creado y el antivirus lo
-        escanea en ese momento. Si lo lanzamos ahí nomás, el bootloader extrae
-        python313.dll a %TEMP% y el LoadLibrary choca con el escaneo:
-        "Failed to load Python DLL ... No se puede encontrar el módulo
-        especificado". Abrirlo a mano después siempre funciona, justamente
-        porque el escaneo ya terminó.
+    Lo delicado acá es el entorno, no los tiempos: hay que borrar las variables
+    del bootloader (ver _VARS_PYINSTALLER) antes de cualquier 'start', o el .exe
+    nuevo arranca creyéndose hijo del proceso que acaba de morir y falla con
+    "Failed to load Python DLL". Se limpian dos veces —en el Popen de abajo y
+    acá adentro— porque es barato y una sola omisión rompe la actualización.
 
     Las esperas usan 'ping -n' y no 'timeout': timeout aborta con "No es
     compatible la redirección de entradas" si la consola no tiene stdin real,
-    y en ese caso no esperaría nada — que es exactamente el bug a evitar.
+    y en ese caso no esperaría nada.
     """
     nombre = actual.name
     bat = actual.with_name("_actualizar.bat")
@@ -146,7 +163,11 @@ def _lanzar_swap(actual: Path, nuevo: Path) -> None:
         "chcp 65001 >nul\r\n"
         f"echo Actualizando {nombre}... no cierres esta ventana.\r\n"
         "\r\n"
-        "rem --- 1) Esperar a que la app cierre del todo -------------------\r\n"
+        "rem --- 1) Borrar los rastros del bootloader viejo ----------------\r\n"
+        "rem Tiene que ir antes de cualquier 'start' de este archivo.\r\n"
+        + "".join(f'set "{v}="\r\n' for v in _VARS_PYINSTALLER) +
+        "\r\n"
+        "rem --- 2) Esperar a que la app cierre del todo -------------------\r\n"
         ":esperar\r\n"
         f'tasklist /FI "IMAGENAME eq {nombre}" 2>nul | find /I "{nombre}" >nul\r\n'
         "if not errorlevel 1 (\r\n"
@@ -155,7 +176,7 @@ def _lanzar_swap(actual: Path, nuevo: Path) -> None:
         ")\r\n"
         "ping -n 3 127.0.0.1 >nul\r\n"
         "\r\n"
-        "rem --- 2) Reemplazar el .exe (reintenta si sigue tomado) ---------\r\n"
+        "rem --- 3) Reemplazar el .exe (reintenta si sigue tomado) ---------\r\n"
         "set INTENTOS=0\r\n"
         ":mover\r\n"
         f'move /Y "{nuevo}" "{actual}" >nul 2>&1\r\n'
@@ -175,9 +196,8 @@ def _lanzar_swap(actual: Path, nuevo: Path) -> None:
         "goto mover\r\n"
         ":movido\r\n"
         "\r\n"
-        "rem --- 3) Dejar que el antivirus termine de escanear el .exe -----\r\n"
-        "echo Verificando el archivo descargado...\r\n"
-        "ping -n 7 127.0.0.1 >nul\r\n"
+        "rem --- 4) Dejar que el archivo termine de asentarse --------------\r\n"
+        "ping -n 3 127.0.0.1 >nul\r\n"
         "\r\n"
         f'start "" "{actual}"\r\n'
         'del "%~f0"\r\n'
@@ -185,7 +205,8 @@ def _lanzar_swap(actual: Path, nuevo: Path) -> None:
     bat.write_text(contenido, encoding="utf-8")
     subprocess.Popen(["cmd", "/c", str(bat)],
                      creationflags=CREATE_NEW_CONSOLE,
-                     cwd=str(actual.parent), close_fds=True)
+                     cwd=str(actual.parent), close_fds=True,
+                     env=_entorno_limpio())
 
 
 def aplicar_actualizacion(info: dict) -> None:
