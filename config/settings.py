@@ -49,7 +49,7 @@ NEON_DSN = os.getenv("NEON_DATABASE_URL", "")
 
 # --- Parámetros de la app --------------------------------------------------
 APP_NOMBRE = "Kiosko POS"
-APP_VERSION = "0.9.2"
+APP_VERSION = "0.9.3"
 
 # Cada cuántos segundos el hilo de sincronización intenta subir ventas pendientes.
 SYNC_INTERVALO_SEG = 60
