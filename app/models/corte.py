@@ -22,6 +22,9 @@ class Corte:
     costo_kg: Decimal = Decimal("0")
     es_desperdicio: bool = False
     confirmado: bool = False
+    # PLU de la balanza etiquetadora. Se anota en el borrador y se le aplica al
+    # producto al confirmar la pieza (que es cuando el producto existe).
+    plu: int | None = None
 
     @property
     def subtotal(self) -> Decimal:

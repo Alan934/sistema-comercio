@@ -38,8 +38,10 @@ def _migrar(conn: sqlite3.Connection) -> None:
         "categorias": [("margen_pct", "NUMERIC(6,2)"),
                        ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
         "productos": [("margen_pct", "NUMERIC(6,2)"), ("ubicacion", "TEXT"),
+                      ("plu", "INTEGER"),
                       ("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
         "lotes": [("sincronizado", "INTEGER NOT NULL DEFAULT 0")],
+        "cortes": [("plu", "INTEGER")],
         "cuenta_movimientos": [("metodo", "TEXT")],
         "gastos": [("metodo", "TEXT NOT NULL DEFAULT 'EFECTIVO'")],
         "cierres_caja": [
@@ -53,6 +55,11 @@ def _migrar(conn: sqlite3.Connection) -> None:
             if nombre not in existentes:
                 conn.execute(
                     f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}")
+    # Va acá y no en schema_local.sql porque el índice necesita que la columna
+    # plu ya exista, y ese script corre antes que estas migraciones.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_prod_plu ON productos(plu) "
+        "WHERE plu IS NOT NULL AND activo = 1")
     _normalizar_fechas_lotes(conn)
     _promover_super_admin(conn)
 

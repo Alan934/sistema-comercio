@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS categorias (
 CREATE TABLE IF NOT EXISTS productos (
     id                   TEXT PRIMARY KEY,
     codigo_barra         TEXT UNIQUE,
+    plu                  INTEGER,                     -- código del artículo en la balanza etiquetadora (1..9999)
     nombre               TEXT NOT NULL,
     categoria_id         TEXT REFERENCES categorias(id),
     es_pesable           INTEGER NOT NULL DEFAULT 0,
@@ -138,6 +139,7 @@ CREATE TABLE IF NOT EXISTS cortes (
     pieza_id        TEXT NOT NULL REFERENCES piezas(id),
     producto_id     TEXT REFERENCES productos(id),      -- corte-producto que recibe stock (NULL hasta confirmar)
     descripcion     TEXT NOT NULL,                      -- nombre del corte (snapshot)
+    plu             INTEGER,                            -- PLU de balanza a asignarle al producto al confirmar
     peso            NUMERIC(12,3) NOT NULL DEFAULT 0,   -- kg del corte
     precio_venta_kg NUMERIC(12,2) NOT NULL DEFAULT 0,   -- $ por kg de venta
     margen_pct      NUMERIC(6,2),                       -- override (corte > pieza > res)
@@ -265,6 +267,8 @@ CREATE INDEX IF NOT EXISTS idx_mov_stock_sync ON movimientos_stock(sincronizado)
 CREATE INDEX IF NOT EXISTS idx_mov_stock_prod ON movimientos_stock(producto_id);
 CREATE INDEX IF NOT EXISTS idx_prod_codigo  ON productos(codigo_barra);
 CREATE INDEX IF NOT EXISTS idx_prod_nombre  ON productos(nombre);
+-- El índice único de productos.plu se crea en db_local._migrar, no acá: este
+-- script corre ANTES de agregar la columna a las bases que ya existían.
 CREATE INDEX IF NOT EXISTS idx_ventas_sync  ON ventas(sincronizado);
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cm_entidad   ON cuenta_movimientos(entidad_tipo, entidad_id);

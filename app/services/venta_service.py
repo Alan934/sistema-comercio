@@ -25,6 +25,16 @@ def buscar_por_codigo(codigo: str) -> Producto | None:
         conn.close()
 
 
+def buscar_por_plu(plu: int) -> Producto | None:
+    """Producto por su código en la balanza etiquetadora (lo que viaja dentro
+    del código de barras de la etiqueta)."""
+    conn = db_local.connect()
+    try:
+        return producto_repo.buscar_por_plu(conn, plu)
+    finally:
+        conn.close()
+
+
 def buscar_por_nombre(texto: str) -> list[Producto]:
     conn = db_local.connect()
     try:

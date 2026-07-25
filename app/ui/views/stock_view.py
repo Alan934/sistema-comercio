@@ -17,6 +17,7 @@ from app.ui.dialogs.producto_dialog import ProductoDialog
 from app.ui.dialogs.remito_dialog import RemitoDialog
 from app.ui.dialogs.categorias_dialog import CategoriasManager
 from app.ui.dialogs.alertas_dialog import AlertasDialog
+from app.ui.dialogs.balanza_dialog import ListaBalanzaDialog
 from app.ui.dialogs.vencimientos_dialog import VencimientosDialog
 
 
@@ -114,16 +115,22 @@ class StockView(ctk.CTkFrame):
                       border_width=1, border_color=theme.GHOST_BTN_BORDER,
                       hover_color=theme.GHOST_BTN_HOVER,
                       command=self._gestionar_categorias).grid(row=0, column=2, padx=4)
+        ctk.CTkButton(top, text="⚖ Balanza", width=110, height=38,
+                      corner_radius=10, font=theme.fuente(14),
+                      fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
+                      border_width=1, border_color=theme.GHOST_BTN_BORDER,
+                      hover_color=theme.GHOST_BTN_HOVER,
+                      command=self._lista_balanza).grid(row=0, column=3, padx=4)
         ctk.CTkButton(top, text="Nuevo producto", width=140, height=38,
                       corner_radius=10, font=theme.fuente(14),
                       fg_color=theme.GHOST_BTN_BG, text_color=theme.ACCENT,
                       border_width=1, border_color=theme.GHOST_BTN_BORDER,
                       hover_color=theme.GHOST_BTN_HOVER,
-                      command=self._nuevo_producto).grid(row=0, column=3, padx=4)
+                      command=self._nuevo_producto).grid(row=0, column=4, padx=4)
         ctk.CTkButton(top, text="Recibir remito", width=140, height=38,
                       corner_radius=10, font=theme.fuente(14),
                       fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
-                      command=self._recibir_remito).grid(row=0, column=4)
+                      command=self._recibir_remito).grid(row=0, column=5)
 
         # Lector de código de barra (segunda línea): la pistolita escribe acá y
         # al Enter, si el código existe muestra el producto para ver su stock; si
@@ -685,6 +692,10 @@ class StockView(ctk.CTkFrame):
     def _gestionar_categorias(self) -> None:
         CategoriasManager(self).mostrar()
         self._recargar()  # los precios pueden haber cambiado
+
+    def _lista_balanza(self) -> None:
+        """Lista de PLU y precios para ir a repasar la balanza."""
+        ListaBalanzaDialog(self, stock_service.listar_para_balanza()).mostrar()
 
     def _ver_alertas(self) -> None:
         bajos = stock_service.alertas_stock_bajo()

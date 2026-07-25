@@ -117,8 +117,26 @@ class ProductoDialog(ModalBase):
         self.var_venc = tk.IntVar(value=1 if p.get("controla_vencimiento") else 0)
         self.var_stock = tk.IntVar(value=1 if p.get("controla_stock", 1) else 0)
         ctk.CTkCheckBox(self, text="Se vende al peso (kg)",
-                        variable=self.var_pesable).grid(
+                        variable=self.var_pesable,
+                        command=self._toggle_plu).grid(
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
+        fila += 1
+        # PLU de la balanza etiquetadora: solo tiene sentido en los pesables.
+        self.fila_plu = ctk.CTkFrame(self, fg_color="transparent")
+        self.fila_plu.grid(row=fila, column=0, columnspan=2, sticky="w",
+                           padx=20, pady=(0, 3))
+        ctk.CTkLabel(self.fila_plu, text="PLU balanza", anchor="w").pack(
+            side="left", padx=(20, 8))
+        self.ent_plu = ctk.CTkEntry(self.fila_plu, width=90,
+                                    placeholder_text="1-9999")
+        self.ent_plu.pack(side="left")
+        if p.get("plu") is not None:
+            self.ent_plu.insert(0, str(p["plu"]))
+        ctk.CTkLabel(self.fila_plu,
+                     text="El número con el que este corte está cargado en la "
+                          "balanza. Vacío = no se pesa ahí.",
+                     font=theme.fuente(12), text_color=theme.TXT_MUTED).pack(
+            side="left", padx=(10, 0))
         fila += 1
         ctk.CTkCheckBox(self, text="Controla vencimiento (perecedero)",
                         variable=self.var_venc, command=self._toggle_venc).grid(
@@ -150,6 +168,7 @@ class ProductoDialog(ModalBase):
             row=fila, column=0, columnspan=2, sticky="w", padx=20, pady=3)
         fila += 1
         self._toggle_venc()
+        self._toggle_plu()
 
         self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
         self.lbl_error.grid(row=fila, column=0, columnspan=2, padx=20)
@@ -173,6 +192,14 @@ class ProductoDialog(ModalBase):
             self.fila_venc.grid()
         else:
             self.fila_venc.grid_remove()
+
+    def _toggle_plu(self) -> None:
+        """El PLU es el código del artículo en la balanza etiquetadora: solo
+        aplica a lo que se vende al peso."""
+        if self.var_pesable.get():
+            self.fila_plu.grid()
+        else:
+            self.fila_plu.grid_remove()
 
     # --- Precio calculado en vivo ------------------------------------------
 
@@ -240,6 +267,9 @@ class ProductoDialog(ModalBase):
             "margen_pct": mtxt or None,
             "ubicacion": self.ent_ubicacion.get().strip() or None,
             "es_pesable": bool(self.var_pesable.get()),
+            # Si dejó de venderse al peso, el PLU de la balanza ya no aplica.
+            "plu": (self.ent_plu.get().strip()
+                    if self.var_pesable.get() else None),
             "controla_vencimiento": bool(self.var_venc.get()),
             "fecha_vencimiento": fecha_venc,
             "controla_stock": bool(self.var_stock.get()),

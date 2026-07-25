@@ -20,3 +20,4 @@ class Producto:
     ubicacion: str | None = None        # dónde está físicamente
     controla_vencimiento: bool = False  # perecedero: lleva lotes con fecha
     stock_minimo: Decimal = Decimal("0")  # umbral de alerta de stock bajo
+    plu: int | None = None    # código en la balanza etiquetadora (ver core/balanza.py)

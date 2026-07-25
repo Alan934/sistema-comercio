@@ -16,7 +16,7 @@ completo, o no entra nada. Confirmar una pieza es la operación crítica.
 """
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.core import db_local, pricing
+from app.core import balanza, db_local, pricing
 from app.core.utils import ahora_iso, ahora_local, nuevo_id, normalizar_nombre
 from app.models.res import Res, CONTADO, CUENTA_CORRIENTE, ABIERTA, CERRADA
 from app.models.pieza import Pieza
@@ -34,6 +34,33 @@ class DespieceError(Exception):
 
 
 # --- Helpers de conversión --------------------------------------------------
+
+def _plu(conn, valor, corte_id=None, producto_id=None) -> int | None:
+    """Normaliza el PLU de balanza del corte y verifica que esté libre.
+
+    Choca contra dos cosas: un producto que ya lo usa (salvo que sea el mismo
+    producto que este corte va a cargar) y otro corte borrador que ya lo
+    reservó. Se valida acá, al cargar el corte, y no al confirmar la pieza:
+    avisar en el momento es mejor que voltear la confirmación entera."""
+    try:
+        plu = balanza.normalizar_plu(valor)
+    except ValueError as e:
+        raise DespieceError(str(e))
+    if plu is None:
+        return None
+
+    prod = producto_repo.buscar_por_plu(conn, plu)
+    if prod is not None and prod.id != producto_id:
+        raise DespieceError(
+            f"El PLU {plu} ya lo usa «{prod.nombre}». Cada artículo de la "
+            "balanza necesita un número distinto.")
+    otro = corte_repo.borrador_con_plu(conn, plu, excluir_id=corte_id)
+    if otro is not None:
+        raise DespieceError(
+            f"El PLU {plu} ya se lo asignaste al corte «{otro.descripcion}» "
+            "en este despiece.")
+    return plu
+
 
 def _dec(valor, campo: str = "valor") -> Decimal:
     """Texto/número (acepta coma decimal) -> Decimal. Lanza si no parsea."""
@@ -210,7 +237,8 @@ def listar_piezas(res_id: str) -> list[Pieza]:
 # --- Cortes -----------------------------------------------------------------
 
 def agregar_corte(pieza_id, descripcion, peso, precio_venta_kg=None,
-                  margen_pct=None, es_desperdicio=False, producto_id=None) -> str:
+                  margen_pct=None, es_desperdicio=False, producto_id=None,
+                  plu=None) -> str:
     """Agrega un renglón de corte a una pieza abierta. El precio se toma
     explícito o se deriva del margen (corte > pieza > res)."""
     conn = db_local.connect()
@@ -231,11 +259,15 @@ def agregar_corte(pieza_id, descripcion, peso, precio_venta_kg=None,
             margen_c = _dec_opt(margen_pct)
             precio = (Decimal("0.00") if es_desperdicio
                       else _resolver_precio(precio_venta_kg, margen_c, pieza, res))
+            # Un desperdicio no genera producto, así que no lleva PLU.
+            plu_c = (None if es_desperdicio
+                     else _plu(conn, plu, producto_id=(producto_id or None)))
             corte = Corte(
                 id=nuevo_id(), pieza_id=pieza_id, descripcion=desc, peso=peso_d,
                 precio_venta_kg=precio, producto_id=(producto_id or None),
                 margen_pct=margen_c, costo_kg=Decimal("0"),
-                es_desperdicio=bool(es_desperdicio), confirmado=False)
+                es_desperdicio=bool(es_desperdicio), confirmado=False,
+                plu=plu_c)
             corte_repo.crear(conn, corte)
             _refrescar_peso_pieza(conn, pieza_id)
     finally:
@@ -244,7 +276,7 @@ def agregar_corte(pieza_id, descripcion, peso, precio_venta_kg=None,
 
 
 def editar_corte(corte_id, descripcion, peso, precio_venta_kg=None,
-                 margen_pct=None, es_desperdicio=False) -> None:
+                 margen_pct=None, es_desperdicio=False, plu=None) -> None:
     """Edita un corte borrador (no confirmado)."""
     conn = db_local.connect()
     try:
@@ -265,6 +297,9 @@ def editar_corte(corte_id, descripcion, peso, precio_venta_kg=None,
                 raise DespieceError("El peso del corte debe ser mayor a 0.")
             corte.margen_pct = _dec_opt(margen_pct)
             corte.es_desperdicio = bool(es_desperdicio)
+            corte.plu = (None if corte.es_desperdicio
+                         else _plu(conn, plu, corte_id=corte_id,
+                                   producto_id=corte.producto_id))
             corte.precio_venta_kg = (
                 Decimal("0.00") if corte.es_desperdicio
                 else _resolver_precio(precio_venta_kg, corte.margen_pct, pieza, res))
@@ -319,7 +354,12 @@ def buscar_productos_carne(texto: str) -> list:
 def confirmar_pieza(pieza_id) -> dict:
     """Confirma la pieza: cada corte con precio carga stock a su producto pesable
     (creándolo en la categoría 'Carne' si hace falta). Los desperdicios quedan
-    registrados para el costeo pero no generan stock. Transacción única."""
+    registrados para el costeo pero no generan stock. Transacción única.
+
+    Devuelve además `para_balanza`: qué cortes quedaron con qué precio, para
+    poder emparejar la balanza (que no se sincroniza sola). Trae el precio
+    anterior para poder marcar cuáles CAMBIARON, y `sin_plu` lista los que no
+    se van a poder escanear porque les falta el número."""
     conn = db_local.connect()
     try:
         with conn:
@@ -335,6 +375,8 @@ def confirmar_pieza(pieza_id) -> dict:
 
             cat_id = None
             confirmados = 0
+            para_balanza = []
+            sin_plu = []
             for c in cortes:
                 if c.confirmado:
                     continue
@@ -344,19 +386,42 @@ def confirmar_pieza(pieza_id) -> dict:
                     c.confirmado = True
                     corte_repo.actualizar(conn, c)
                     continue
+                precio_anterior = None
                 if c.producto_id:
                     pid = c.producto_id
+                    previo = producto_repo.obtener(conn, pid)
+                    if previo is not None:
+                        precio_anterior = Decimal(str(previo["precio_venta"]))
                     producto_repo.actualizar_costo(conn, pid, res.costo_por_kg)
                     producto_repo.actualizar_precio(conn, pid, c.precio_venta_kg)
+                    # PLU vacío = no tocar el que ya tenga el producto (para no
+                    # desconfigurarle la balanza sin querer).
+                    if c.plu is not None:
+                        producto_repo.actualizar_plu(conn, pid, c.plu)
                 else:
                     if cat_id is None:
                         cat_id = _categoria_carne_id(conn)
                     pid = _crear_producto_corte(
                         conn, c.descripcion, cat_id, res.costo_por_kg,
-                        c.precio_venta_kg)
+                        c.precio_venta_kg, plu=c.plu)
                 producto_repo.aumentar_stock(
                     conn, pid, c.peso,
                     tipo=movimiento_repo.DESPIECE, referencia_id=c.id)
+                # El PLU efectivo puede venir del corte o ya estar en el producto.
+                prod_final = producto_repo.obtener(conn, pid)
+                plu_final = prod_final["plu"] if prod_final is not None else None
+                if plu_final is None:
+                    sin_plu.append(c.descripcion)
+                else:
+                    para_balanza.append({
+                        "nombre": c.descripcion,
+                        "plu": plu_final,
+                        "precio": c.precio_venta_kg,
+                        "precio_anterior": precio_anterior,
+                        "es_nuevo": precio_anterior is None,
+                        "cambio": (precio_anterior is not None
+                                   and precio_anterior != c.precio_venta_kg),
+                    })
                 corte_repo.marcar_confirmado(conn, c.id, pid, res.costo_por_kg)
                 confirmados += 1
 
@@ -364,7 +429,8 @@ def confirmar_pieza(pieza_id) -> dict:
             pieza_repo.cambiar_estado(conn, pieza_id, CERRADA)
     finally:
         conn.close()
-    return {"pieza_id": pieza_id, "cortes_confirmados": confirmados}
+    return {"pieza_id": pieza_id, "cortes_confirmados": confirmados,
+            "para_balanza": para_balanza, "sin_plu": sin_plu}
 
 
 # --- Resúmenes / ganancia ---------------------------------------------------
@@ -448,12 +514,13 @@ def _categoria_carne_id(conn, crear: bool = True):
     return categoria_repo.crear(conn, CATEGORIA_CARNE, None) if crear else None
 
 
-def _crear_producto_corte(conn, nombre, categoria_id, costo, precio) -> str:
+def _crear_producto_corte(conn, nombre, categoria_id, costo, precio,
+                          plu=None) -> str:
     """Crea el producto pesable de un corte (en la categoría Carne) con stock 0;
     el stock lo suma el llamador con aumentar_stock."""
     pid = nuevo_id()
     producto_repo.crear(conn, {
-        "id": pid, "codigo_barra": None, "nombre": nombre,
+        "id": pid, "codigo_barra": None, "plu": plu, "nombre": nombre,
         "categoria_id": categoria_id, "es_pesable": 1, "unidad_medida": "KG",
         "costo_compra": str(costo), "precio_venta": str(precio),
         "margen_pct": None, "ubicacion": None, "stock_actual": "0",

@@ -44,6 +44,11 @@ def asegurar_schema(conn) -> None:
         "ALTER TABLE categorias ADD COLUMN IF NOT EXISTS margen_pct NUMERIC(6,2)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS margen_pct NUMERIC(6,2)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS ubicacion TEXT",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS plu INTEGER",
+        "ALTER TABLE cortes ADD COLUMN IF NOT EXISTS plu INTEGER",
+        # Después del ALTER de arriba: el índice necesita la columna.
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_prod_plu "
+        "ON productos(plu) WHERE plu IS NOT NULL AND activo = TRUE",
         "ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS email TEXT",
         "ALTER TABLE cuenta_movimientos ADD COLUMN IF NOT EXISTS metodo TEXT",
         "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS "

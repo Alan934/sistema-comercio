@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS categorias (
 CREATE TABLE IF NOT EXISTS productos (
     id                   TEXT PRIMARY KEY,
     codigo_barra         TEXT UNIQUE,
+    plu                  INTEGER,
     nombre               TEXT NOT NULL,
     categoria_id         TEXT,
     es_pesable           BOOLEAN NOT NULL DEFAULT FALSE,
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS cortes (
     pieza_id        TEXT NOT NULL REFERENCES piezas(id),
     producto_id     TEXT,
     descripcion     TEXT NOT NULL,
+    plu             INTEGER,
     peso            NUMERIC(12,3) NOT NULL DEFAULT 0,
     precio_venta_kg NUMERIC(12,2) NOT NULL DEFAULT 0,
     margen_pct      NUMERIC(6,2),
@@ -237,6 +239,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cloud_mov_stock_prod ON movimientos_stock(producto_id);
+-- El índice único de productos.plu se crea en db_cloud.asegurar_schema, después
+-- del ALTER que agrega la columna a las tablas que ya existían en Neon.
 CREATE INDEX IF NOT EXISTS idx_cloud_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_venta    ON ventas_detalle(venta_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_det_compra   ON compras_detalle(compra_id);

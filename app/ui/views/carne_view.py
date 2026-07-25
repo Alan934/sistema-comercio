@@ -21,6 +21,7 @@ from app.ui.dialogs import notificar
 from app.ui.dialogs.res_dialog import ResDialog
 from app.ui.dialogs.pieza_dialog import PiezaDialog
 from app.ui.dialogs.corte_dialog import CorteDialog
+from app.ui.dialogs.balanza_dialog import ListaBalanzaDialog
 
 
 def _money(v) -> str:
@@ -217,9 +218,9 @@ class CarneView(ctk.CTkFrame):
         # sobrante lo absorbe una columna final vacía.
         header = ctk.CTkFrame(p, fg_color="transparent")
         header.grid(row=3, column=0, sticky="ew", padx=28)
-        header.grid_columnconfigure(6, weight=1)
+        header.grid_columnconfigure(7, weight=1)
         for col, (txt, w) in enumerate(
-                [("Corte", 240), ("Kg", 90), ("Precio/kg", 110),
+                [("Corte", 240), ("PLU", 60), ("Kg", 90), ("Precio/kg", 110),
                  ("% del total", 90), ("Total", 120), ("", 200)]):
             ctk.CTkLabel(header, text=txt, width=w,
                          anchor="e" if txt in ("Kg", "Precio/kg", "% del total",
@@ -384,16 +385,21 @@ class CarneView(ctk.CTkFrame):
                          fg_color=theme.ROW_ALT if i % 2 else "transparent",
                          corner_radius=8)
         f.pack(fill="x", padx=6, pady=1)
-        f.grid_columnconfigure(6, weight=1)   # el sobrante va a la derecha
+        f.grid_columnconfigure(7, weight=1)   # el sobrante va a la derecha
         nombre = c.descripcion + ("   (desperdicio)" if c.es_desperdicio else "")
         ctk.CTkLabel(f, text=nombre, width=240, anchor="w", font=theme.fuente(14),
                      text_color=theme.TXT_MUTED if c.es_desperdicio else theme.TXT).grid(
             row=0, column=0, padx=4, sticky="w")
+        # PLU de balanza: en gris si el corte todavía no lo tiene asignado.
+        ctk.CTkLabel(f, text=str(c.plu) if c.plu else "—", width=60, anchor="w",
+                     font=theme.fuente(13),
+                     text_color=theme.TXT if c.plu else theme.TXT_MUTED).grid(
+            row=0, column=1, padx=4)
         ctk.CTkLabel(f, text=str(c.peso), width=90, anchor="e",
-                     font=theme.fuente(14), text_color=theme.TXT).grid(row=0, column=1, padx=4)
+                     font=theme.fuente(14), text_color=theme.TXT).grid(row=0, column=2, padx=4)
         precio = "—" if c.es_desperdicio else _money(c.precio_venta_kg)
         ctk.CTkLabel(f, text=precio, width=110, anchor="e", font=theme.fuente(14),
-                     text_color=theme.TXT_MUTED).grid(row=0, column=2, padx=4)
+                     text_color=theme.TXT_MUTED).grid(row=0, column=3, padx=4)
         # % que representa este corte sobre el valor total de venta de la pieza.
         if c.subtotal > 0 and total_venta > 0:
             share = (c.subtotal / total_venta * 100).quantize(Decimal("0.1"))
@@ -401,13 +407,13 @@ class CarneView(ctk.CTkFrame):
         else:
             pct = "—"
         ctk.CTkLabel(f, text=pct, width=90, anchor="e", font=theme.fuente(13),
-                     text_color=theme.TXT_MUTED).grid(row=0, column=3, padx=4)
+                     text_color=theme.TXT_MUTED).grid(row=0, column=4, padx=4)
         total = "—" if c.es_desperdicio else _money(c.subtotal)
         ctk.CTkLabel(f, text=total, width=120, anchor="e",
                      font=theme.fuente(14, "bold"), text_color=theme.TXT).grid(
-            row=0, column=4, padx=4)
+            row=0, column=5, padx=4)
         acc = ctk.CTkFrame(f, fg_color="transparent")
-        acc.grid(row=0, column=5, padx=2)
+        acc.grid(row=0, column=6, padx=2)
         if editable:
             ctk.CTkButton(acc, text="✏  Editar", width=92, height=30, corner_radius=8,
                           font=theme.fuente(13), fg_color="transparent",
@@ -495,7 +501,7 @@ class CarneView(ctk.CTkFrame):
                 precio_venta_kg=datos["precio_venta_kg"],
                 margen_pct=datos["margen_pct"],
                 es_desperdicio=datos["es_desperdicio"],
-                producto_id=datos["producto_id"])
+                producto_id=datos["producto_id"], plu=datos["plu"])
         except ds.DespieceError as e:
             notificar.error(self, "No se pudo agregar el corte", str(e))
             return
@@ -516,7 +522,7 @@ class CarneView(ctk.CTkFrame):
                 corte_id, datos["descripcion"], datos["peso"],
                 precio_venta_kg=datos["precio_venta_kg"],
                 margen_pct=datos["margen_pct"],
-                es_desperdicio=datos["es_desperdicio"])
+                es_desperdicio=datos["es_desperdicio"], plu=datos["plu"])
         except ds.DespieceError as e:
             notificar.error(self, "No se pudo guardar", str(e))
             return
@@ -549,3 +555,12 @@ class CarneView(ctk.CTkFrame):
         mostrar_toast(self, f"Pieza confirmada · {res['cortes_confirmados']} cortes "
                             "cargados al stock", tipo="ok")
         self._recargar_detalle()
+        # La balanza no se sincroniza sola: si algo quedó con otro precio (o sin
+        # PLU), se muestra la lista para ir a emparejarla.
+        if res["para_balanza"] or res["sin_plu"]:
+            hay_que_tocar = any(i["cambio"] or i["es_nuevo"]
+                                for i in res["para_balanza"]) or res["sin_plu"]
+            if hay_que_tocar:
+                ListaBalanzaDialog(self, res["para_balanza"],
+                                   sin_plu=res["sin_plu"],
+                                   tras_despiece=True).mostrar()

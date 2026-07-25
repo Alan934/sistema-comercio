@@ -58,7 +58,7 @@ def _pull_catalogo(local, cloud) -> int:
             aplicados += 1
 
         cur.execute(
-            """SELECT id, codigo_barra, nombre, categoria_id, es_pesable,
+            """SELECT id, codigo_barra, plu, nombre, categoria_id, es_pesable,
                       unidad_medida, precio_venta, costo_compra, margen_pct,
                       ubicacion, stock_actual, stock_minimo, controla_stock,
                       controla_vencimiento, activo, updated_at
@@ -175,13 +175,14 @@ def _push_productos(local, cloud) -> int:
             for p in pendientes:
                 cur.execute(
                     """INSERT INTO productos
-                         (id, codigo_barra, nombre, categoria_id, es_pesable,
+                         (id, codigo_barra, plu, nombre, categoria_id, es_pesable,
                           unidad_medida, costo_compra, precio_venta, margen_pct,
                           ubicacion, stock_actual, stock_minimo, controla_stock,
                           controla_vencimiento, activo, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO UPDATE SET
-                         codigo_barra = EXCLUDED.codigo_barra, nombre = EXCLUDED.nombre,
+                         codigo_barra = EXCLUDED.codigo_barra, plu = EXCLUDED.plu,
+                         nombre = EXCLUDED.nombre,
                          categoria_id = EXCLUDED.categoria_id,
                          es_pesable = EXCLUDED.es_pesable,
                          unidad_medida = EXCLUDED.unidad_medida,
@@ -193,7 +194,8 @@ def _push_productos(local, cloud) -> int:
                          controla_stock = EXCLUDED.controla_stock,
                          controla_vencimiento = EXCLUDED.controla_vencimiento,
                          activo = EXCLUDED.activo, updated_at = EXCLUDED.updated_at""",
-                    (p["id"], p["codigo_barra"], p["nombre"], p["categoria_id"],
+                    (p["id"], p["codigo_barra"], p["plu"], p["nombre"],
+                     p["categoria_id"],
                      bool(p["es_pesable"]), p["unidad_medida"], _num(p["costo_compra"]),
                      _num(p["precio_venta"]), _num_null(p["margen_pct"]), p["ubicacion"],
                      _num(p["stock_actual"]), _num(p["stock_minimo"]),
@@ -491,14 +493,15 @@ def _push_cortes(local, cloud) -> int:
             for c in pendientes:
                 cur.execute(
                     """INSERT INTO cortes
-                         (id, pieza_id, producto_id, descripcion, peso,
+                         (id, pieza_id, producto_id, descripcion, plu, peso,
                           precio_venta_kg, margen_pct, costo_kg, subtotal,
                           es_desperdicio, confirmado, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO UPDATE SET
                          pieza_id = EXCLUDED.pieza_id,
                          producto_id = EXCLUDED.producto_id,
-                         descripcion = EXCLUDED.descripcion, peso = EXCLUDED.peso,
+                         descripcion = EXCLUDED.descripcion, plu = EXCLUDED.plu,
+                         peso = EXCLUDED.peso,
                          precio_venta_kg = EXCLUDED.precio_venta_kg,
                          margen_pct = EXCLUDED.margen_pct, costo_kg = EXCLUDED.costo_kg,
                          subtotal = EXCLUDED.subtotal,
@@ -506,7 +509,7 @@ def _push_cortes(local, cloud) -> int:
                          confirmado = EXCLUDED.confirmado,
                          updated_at = EXCLUDED.updated_at""",
                     (c["id"], c["pieza_id"], c["producto_id"], c["descripcion"],
-                     _num(c["peso"]), _num(c["precio_venta_kg"]),
+                     c["plu"], _num(c["peso"]), _num(c["precio_venta_kg"]),
                      _num_null(c["margen_pct"]), _num(c["costo_kg"]),
                      _num(c["subtotal"]), bool(c["es_desperdicio"]),
                      bool(c["confirmado"]), _dt(c["updated_at"])),

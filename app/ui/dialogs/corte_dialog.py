@@ -6,9 +6,13 @@ que sale de aplicarlo al costo de la res—. El nombre tiene autocompletado de
 productos: si se elige uno existente, el corte carga stock a ese producto; si se
 escribe uno nuevo, al confirmar la pieza se crea el producto pesable.
 
+El PLU es opcional: es el número con el que el corte está cargado en la balanza
+etiquetadora. Al confirmar la pieza se le aplica al producto, y desde ahí la
+etiqueta impresa se puede escanear directo en la Caja.
+
 Devuelve un dict o None:
     {"descripcion", "peso", "precio_venta_kg", "margen_pct",
-     "es_desperdicio", "producto_id"}
+     "es_desperdicio", "producto_id", "plu"}
 """
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -83,20 +87,35 @@ class CorteDialog(ModalBase):
         self.ent_valor.grid(row=4, column=1, padx=(8, 20), pady=6, sticky="ew")
         self.ent_valor.bind("<KeyRelease>", self._recalcular)
 
+        # PLU de la balanza etiquetadora: al confirmar la pieza se le aplica al
+        # producto del corte, así la etiqueta ya se puede escanear en la Caja.
+        ctk.CTkLabel(self, text="PLU balanza", anchor="w").grid(
+            row=5, column=0, sticky="w", padx=(20, 8), pady=6)
+        cont_plu = ctk.CTkFrame(self, fg_color="transparent")
+        cont_plu.grid(row=5, column=1, padx=(8, 20), pady=6, sticky="ew")
+        self.ent_plu = ctk.CTkEntry(cont_plu, width=90,
+                                    placeholder_text="1-9999")
+        self.ent_plu.pack(side="left")
+        self.ent_plu.bind("<KeyRelease>", lambda _e: self._limpiar_error(),
+                          add="+")
+        ctk.CTkLabel(cont_plu, text="Su número en la balanza (opcional)",
+                     font=theme.fuente(12), text_color=theme.TXT_MUTED).pack(
+            side="left", padx=(10, 0))
+
         self.var_desp = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(self, text="Es desperdicio / merma (sin venta)",
                         variable=self.var_desp, onvalue=True, offvalue=False,
                         command=self._toggle_desp).grid(
-            row=5, column=0, columnspan=2, sticky="w", padx=20, pady=(4, 2))
+            row=6, column=0, columnspan=2, sticky="w", padx=20, pady=(4, 2))
 
         self.lbl_calc = ctk.CTkLabel(self, text="", font=theme.fuente(14, "bold"),
                                      text_color=theme.ACCENT)
-        self.lbl_calc.grid(row=6, column=0, columnspan=2, padx=20, pady=(4, 0))
+        self.lbl_calc.grid(row=7, column=0, columnspan=2, padx=20, pady=(4, 0))
         self.lbl_error = ctk.CTkLabel(self, text="", text_color=theme.ROJO)
-        self.lbl_error.grid(row=7, column=0, columnspan=2, padx=20)
+        self.lbl_error.grid(row=8, column=0, columnspan=2, padx=20)
 
         cont = ctk.CTkFrame(self, fg_color="transparent")
-        cont.grid(row=8, column=0, columnspan=2, pady=(8, 18))
+        cont.grid(row=9, column=0, columnspan=2, pady=(8, 18))
         ctk.CTkButton(cont, text="Cancelar", width=120, fg_color="gray",
                       command=self._cancelar).pack(side="left", padx=8)
         ctk.CTkButton(cont, text="Guardar", width=140, fg_color=theme.PRIMARY,
@@ -107,6 +126,8 @@ class CorteDialog(ModalBase):
         if corte is not None:
             self.ent_nombre.insert(0, corte.descripcion)
             self.ent_peso.insert(0, str(corte.peso))
+            if corte.plu is not None:
+                self.ent_plu.insert(0, str(corte.plu))
             if corte.es_desperdicio:
                 self.var_desp.set(True)
                 self._toggle_desp()
@@ -149,14 +170,22 @@ class CorteDialog(ModalBase):
             self.lbl_valor.configure(text="Precio por kg")
             self.ent_valor.delete(0, "end")
             self.ent_valor.insert(0, str(prod.precio_venta))
+            # Si el producto ya tiene PLU, se muestra el suyo. Si no tiene, se
+            # respeta lo que haya escrito (puede estar asignándoselo recién).
+            if prod.plu is not None:
+                self.ent_plu.delete(0, "end")
+                self.ent_plu.insert(0, str(prod.plu))
         self._recalcular()
 
     def _toggle_desp(self):
         estado = "disabled" if self.var_desp.get() else "normal"
         if self.var_desp.get():
             self.ent_valor.delete(0, "end")
+            # Un desperdicio no genera producto: no hay a qué asignarle el PLU.
+            self.ent_plu.delete(0, "end")
         self.ent_valor.configure(state=estado)
         self.seg_modo.configure(state=estado)
+        self.ent_plu.configure(state=estado)
         self._recalcular()
 
     def _limpiar_error(self):
@@ -203,4 +232,5 @@ class CorteDialog(ModalBase):
             "margen_pct": margen,
             "es_desperdicio": desp,
             "producto_id": prod_id,
+            "plu": (None if desp else self.ent_plu.get().strip() or None),
         })

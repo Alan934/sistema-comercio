@@ -27,18 +27,19 @@ def _to_corte(row: sqlite3.Row) -> Corte:
         costo_kg=Decimal(str(row["costo_kg"])),
         es_desperdicio=bool(row["es_desperdicio"]),
         confirmado=bool(row["confirmado"]),
+        plu=row["plu"],
     )
 
 
 def crear(conn: sqlite3.Connection, corte: Corte) -> None:
     conn.execute(
         """INSERT INTO cortes
-           (id, pieza_id, producto_id, descripcion, peso, precio_venta_kg,
+           (id, pieza_id, producto_id, descripcion, plu, peso, precio_venta_kg,
             margen_pct, costo_kg, subtotal, es_desperdicio, confirmado,
             sincronizado, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
         (corte.id, corte.pieza_id, corte.producto_id, corte.descripcion,
-         str(corte.peso), str(corte.precio_venta_kg),
+         corte.plu, str(corte.peso), str(corte.precio_venta_kg),
          None if corte.margen_pct is None else str(corte.margen_pct),
          str(corte.costo_kg), str(corte.subtotal),
          1 if corte.es_desperdicio else 0, 1 if corte.confirmado else 0,
@@ -48,11 +49,11 @@ def crear(conn: sqlite3.Connection, corte: Corte) -> None:
 
 def actualizar(conn: sqlite3.Connection, corte: Corte) -> None:
     conn.execute(
-        """UPDATE cortes SET producto_id = ?, descripcion = ?, peso = ?,
+        """UPDATE cortes SET producto_id = ?, descripcion = ?, plu = ?, peso = ?,
            precio_venta_kg = ?, margen_pct = ?, costo_kg = ?, subtotal = ?,
            es_desperdicio = ?, confirmado = ?, sincronizado = 0, updated_at = ?
            WHERE id = ?""",
-        (corte.producto_id, corte.descripcion, str(corte.peso),
+        (corte.producto_id, corte.descripcion, corte.plu, str(corte.peso),
          str(corte.precio_venta_kg),
          None if corte.margen_pct is None else str(corte.margen_pct),
          str(corte.costo_kg), str(corte.subtotal),
@@ -81,6 +82,20 @@ def eliminar(conn: sqlite3.Connection, corte_id: str) -> None:
 def eliminar_por_pieza(conn: sqlite3.Connection, pieza_id: str) -> None:
     """Borra todos los cortes de una pieza (al eliminar una res no confirmada)."""
     conn.execute("DELETE FROM cortes WHERE pieza_id = ?", (pieza_id,))
+
+
+def borrador_con_plu(conn: sqlite3.Connection, plu: int,
+                     excluir_id: str | None = None) -> Corte | None:
+    """Otro corte NO confirmado que ya reservó ese PLU. Los confirmados no
+    cuentan: esos ya se lo aplicaron a su producto, y ahí lo detecta la
+    validación contra productos."""
+    sql = "SELECT * FROM cortes WHERE plu = ? AND confirmado = 0"
+    params = [plu]
+    if excluir_id is not None:
+        sql += " AND id <> ?"
+        params.append(excluir_id)
+    row = conn.execute(sql + " LIMIT 1", params).fetchone()
+    return _to_corte(row) if row else None
 
 
 def hay_confirmados_por_res(conn: sqlite3.Connection, res_id: str) -> bool:
@@ -134,19 +149,21 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
         return
     margen = str(fila["margen_pct"]) if fila.get("margen_pct") is not None else None
     vals = (fila["pieza_id"], fila["producto_id"], fila["descripcion"],
+            fila.get("plu"),
             str(fila["peso"]), str(fila["precio_venta_kg"]), margen,
             str(fila["costo_kg"]), str(fila["subtotal"]),
             1 if fila["es_desperdicio"] else 0, 1 if fila["confirmado"] else 0,
             _ts(fila["updated_at"]))
     if actual is not None:
         conn.execute(
-            """UPDATE cortes SET pieza_id=?, producto_id=?, descripcion=?, peso=?,
+            """UPDATE cortes SET pieza_id=?, producto_id=?, descripcion=?, plu=?,
+               peso=?,
                precio_venta_kg=?, margen_pct=?, costo_kg=?, subtotal=?,
                es_desperdicio=?, confirmado=?, updated_at=?, sincronizado=1
                WHERE id=?""", vals + (fila["id"],))
     else:
         conn.execute(
-            """INSERT INTO cortes (pieza_id, producto_id, descripcion, peso,
+            """INSERT INTO cortes (pieza_id, producto_id, descripcion, plu, peso,
                precio_venta_kg, margen_pct, costo_kg, subtotal, es_desperdicio,
                confirmado, updated_at, sincronizado, id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)""", vals + (fila["id"],))
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)""", vals + (fila["id"],))

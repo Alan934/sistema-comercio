@@ -25,9 +25,16 @@ class ItemCarrito:
     es_pesable: bool
     controla_stock: bool
     controla_vencimiento: bool = False   # perecedero: consume lotes por FEFO
+    # Importe impreso en la etiqueta de la balanza, si el ítem entró escaneándola.
+    # Manda sobre precio*cantidad: es la plata que el cliente está viendo en la
+    # etiqueta, y `cantidad` son los kg deducidos de ese importe (redondeados al
+    # gramo), así que recalcular daría unos pesos de diferencia.
+    importe_fijo: Decimal | None = None
 
     @property
     def subtotal(self) -> Decimal:
+        if self.importe_fijo is not None:
+            return _a_centavos(self.importe_fijo)
         return _a_centavos(self.precio_unitario * self.cantidad)
 
     @property
@@ -39,9 +46,13 @@ class ItemCarrito:
 class Carrito:
     items: list[ItemCarrito] = field(default_factory=list)
 
-    def agregar(self, producto: Producto, cantidad: Decimal) -> ItemCarrito:
+    def agregar(self, producto: Producto, cantidad: Decimal,
+                importe_fijo: Decimal | None = None) -> ItemCarrito:
         """Agrega un producto. Si NO es pesable y ya está en el carrito,
-        acumula la cantidad en la misma línea (comportamiento típico de caja)."""
+        acumula la cantidad en la misma línea (comportamiento típico de caja).
+        `importe_fijo` lo usa el escaneo de etiquetas de balanza: cada etiqueta
+        es un paquete distinto, así que siempre ocupa su propia línea (los
+        pesables ya se comportan así)."""
         if not producto.es_pesable:
             for item in self.items:
                 if item.producto_id == producto.id:
@@ -49,6 +60,7 @@ class Carrito:
                     return item
 
         item = ItemCarrito(
+            importe_fijo=importe_fijo,
             producto_id=producto.id,
             descripcion=producto.nombre,
             cantidad=cantidad,
@@ -76,6 +88,9 @@ class Carrito:
             self.quitar(indice)
         else:
             self.items[indice].cantidad = cantidad
+            # Si venía de una etiqueta de balanza, al corregir el peso a mano el
+            # importe impreso deja de valer: se vuelve a precio * cantidad.
+            self.items[indice].importe_fijo = None
 
     def vaciar(self) -> None:
         self.items.clear()

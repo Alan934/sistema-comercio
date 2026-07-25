@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import customtkinter as ctk
 
-from app.core import formato
+from app.core import balanza, formato
 
 from app.models.carrito import Carrito
 from app.services import venta_service
@@ -45,6 +45,9 @@ class VentasView(ctk.CTkFrame):
         # código sigue trabajando sobre "el carrito" sin enterarse de las cajas.
         self.cajas = [Carrito()]
         self.activa = 0
+        # Productos a los que ya les avisamos que el precio de la balanza no
+        # coincide con el del sistema (para no repetirlo en cada escaneo).
+        self._aviso_precio_dado: set[str] = set()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0, minsize=250)
@@ -253,9 +256,13 @@ class VentasView(ctk.CTkFrame):
     def recibir_escaneo(self, codigo) -> None:
         """Procesa un código escaneado, venga del campo de escaneo o de la
         captura global (con el foco en cualquier lado): si existe lo agrega al
-        carrito; si no, avisa. Los pesables abren el modal de peso."""
+        carrito; si no, avisa. Los pesables abren el modal de peso, salvo que el
+        código sea una etiqueta de la balanza (ahí el peso ya viene resuelto)."""
         codigo = (codigo or "").strip()
         if not codigo:
+            self.entry_scan.focus_set()
+            return
+        if self._agregar_etiqueta_balanza(codigo):
             self.entry_scan.focus_set()
             return
         prod = venta_service.buscar_por_codigo(codigo)
@@ -267,6 +274,76 @@ class VentasView(ctk.CTkFrame):
                 f"El código {codigo} no pertenece a ningún producto del "
                 f"stock. Cargalo primero en la pantalla de Stock.")
         self.entry_scan.focus_set()
+
+    def _agregar_etiqueta_balanza(self, codigo: str) -> bool:
+        """Si `codigo` es una etiqueta de la balanza etiquetadora, la resuelve y
+        devuelve True (aunque termine en aviso). False = no era una etiqueta, y
+        el escaneo sigue por el camino normal de código de barras.
+
+        La etiqueta trae PLU + importe, así que se agrega de una: sin modal de
+        peso. Se cobra el importe impreso (lo que el cliente ve) y los kg se
+        deducen de él solo para descontar stock."""
+        etiqueta = balanza.parsear(codigo)
+        if etiqueta is None:
+            return False
+
+        if etiqueta.plu == 0:
+            notificar.error(
+                self, "Etiqueta sin artículo",
+                "Esta etiqueta se imprimió sin elegir el artículo en la "
+                "balanza, así que no dice qué producto es. Pesalo de nuevo "
+                "seleccionando el corte en la balanza.")
+            return True
+
+        prod = venta_service.buscar_por_plu(etiqueta.plu)
+        if prod is None:
+            notificar.error(
+                self, "PLU sin producto",
+                f"Ningún producto tiene asignado el PLU {etiqueta.plu} de la "
+                f"balanza. Abrí el producto en Stock y cargáselo.")
+            return True
+
+        kg = balanza.peso_desde_importe(etiqueta.importe, prod.precio_venta)
+        if kg is None:
+            notificar.error(
+                self, "Sin precio por kg",
+                f"«{prod.nombre}» no tiene precio por kg cargado, así que no "
+                f"puedo saber cuántos kilos son {_money(etiqueta.importe)}. "
+                f"Cargá el precio en Stock.")
+            return True
+
+        total = self.carrito.cantidad_de(prod.id) + kg
+        if not self._stock_permite(prod.id, prod.nombre, total,
+                                   prod.controla_stock):
+            return True
+        self.carrito.agregar(prod, kg, importe_fijo=etiqueta.importe)
+        self._refrescar()
+        mostrar_toast(self, f"{prod.nombre} · {kg} kg · "
+                            f"{_money(etiqueta.importe)}", tipo="ok")
+        # La venta ya está bien cobrada (se cobra lo impreso). El aviso es por
+        # el stock, así que va DESPUÉS de agregar: nunca frena la atención.
+        self._avisar_precio_desfasado(prod, etiqueta.importe)
+        return True
+
+    def _avisar_precio_desfasado(self, prod, importe) -> None:
+        """Si el precio/kg de la balanza no coincide con el del sistema, avisa.
+        Una sola vez por producto en la sesión: repetirlo en cada venta cansa y
+        se termina ignorando."""
+        if prod.id in self._aviso_precio_dado:
+            return
+        if not balanza.precio_desfasado(importe, prod.precio_venta):
+            return
+        self._aviso_precio_dado.add(prod.id)
+        notificar.informar(
+            self, "Revisá el precio de la balanza",
+            f"El precio de «{prod.nombre}» no coincide entre la balanza y el "
+            f"sistema.\n\n"
+            f"La venta se cobró bien (se cobra el importe impreso en la "
+            f"etiqueta), pero si no los emparejás el stock se va a ir "
+            f"desviando.\n\n"
+            f"En el sistema está a {_money(prod.precio_venta)} por kg: "
+            f"actualizá el precio en la balanza, o corregí el del sistema si el "
+            f"bueno es el de la balanza.", tipo="alerta")
 
     def _consultar_precio(self) -> None:
         """Abre la consulta de precio. No toca el carrito."""

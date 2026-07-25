@@ -2,7 +2,7 @@
 from datetime import date
 from decimal import Decimal
 
-from app.core import db_local, pricing
+from app.core import balanza, db_local, pricing
 # parse_fecha vive en utils (lo comparte la migración de db_local); se reexporta
 # acá para no romper los `stock_service.parse_fecha` que ya usa la UI.
 from app.core.utils import ahora_iso, nuevo_id, normalizar_nombre, parse_fecha
@@ -21,6 +21,27 @@ def _a_margen(valor) -> Decimal | None:
     return Decimal(str(valor).replace(",", "."))
 
 
+def _a_plu(valor) -> int | None:
+    """Normaliza el código del artículo en la balanza etiquetadora. Vacío = el
+    producto no se pesa en la balanza."""
+    try:
+        return balanza.normalizar_plu(valor)
+    except ValueError as e:
+        raise StockError(str(e))
+
+
+def _validar_plu_libre(conn, plu: int | None, producto_id: str | None) -> None:
+    """Dos productos con el mismo PLU harían que una etiqueta apunte a los dos.
+    La base ya tiene un índice único; esto es para dar un mensaje entendible."""
+    if plu is None:
+        return
+    otro = producto_repo.buscar_por_plu(conn, plu)
+    if otro is not None and otro.id != producto_id:
+        raise StockError(
+            f"El PLU {plu} ya lo usa «{otro.nombre}». Cada artículo de la "
+            "balanza necesita un número distinto.")
+
+
 def _normalizar(datos: dict, *, con_id: bool) -> dict:
     """Completa valores por defecto y normaliza tipos para guardar."""
     nombre = normalizar_nombre(datos.get("nombre") or "")
@@ -35,6 +56,7 @@ def _normalizar(datos: dict, *, con_id: bool) -> dict:
     margen = _a_margen(datos.get("margen_pct"))
     completo = {
         "codigo_barra": (datos.get("codigo_barra") or None),
+        "plu": _a_plu(datos.get("plu")),
         "nombre": nombre,
         "categoria_id": datos.get("categoria_id"),
         "margen_pct": str(margen) if margen is not None else None,
@@ -80,6 +102,7 @@ def crear_producto(datos: dict) -> str:
     conn = db_local.connect()
     try:
         with conn:
+            _validar_plu_libre(conn, completo["plu"], None)
             _aplicar_margen(conn, completo)
             producto_repo.crear(conn, completo)
             # Lote inicial del alta: solo si hay stock que vencer. Un lote en 0
@@ -111,6 +134,7 @@ def actualizar_producto(producto_id: str, datos: dict) -> None:
     conn = db_local.connect()
     try:
         with conn:
+            _validar_plu_libre(conn, completo["plu"], producto_id)
             _aplicar_margen(conn, completo)
             producto_repo.actualizar(conn, completo)
             if ajusta_stock:
@@ -154,6 +178,17 @@ def listar_ubicaciones() -> list[str]:
     conn = db_local.connect()
     try:
         return producto_repo.ubicaciones_distintas(conn)
+    finally:
+        conn.close()
+
+
+def listar_para_balanza() -> list[dict]:
+    """Los productos cargados en la balanza, con el precio que debería tener
+    cada PLU allá. Sirve para ir a emparejar la balanza con el sistema."""
+    conn = db_local.connect()
+    try:
+        return [{"nombre": p.nombre, "plu": p.plu, "precio": p.precio_venta}
+                for p in producto_repo.listar_con_plu(conn)]
     finally:
         conn.close()
 

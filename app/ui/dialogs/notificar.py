@@ -16,6 +16,7 @@ _ICONOS = {
     "ok": (theme.VERDE, "✓"),
     "error": (theme.ROJO, "✕"),
     "info": (theme.ACCENT, "ℹ"),
+    "alerta": (theme.BADGE_KG_TXT, "⚠"),   # algo a corregir, pero no es un error
     "pregunta": (theme.ACCENT, "?"),
 }
 

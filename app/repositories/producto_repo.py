@@ -10,7 +10,8 @@ from app.repositories import movimiento_repo
 
 _COLS = ("id, codigo_barra, nombre, es_pesable, unidad_medida, "
          "precio_venta, costo_compra, stock_actual, controla_stock, activo, "
-         "categoria_id, margen_pct, ubicacion, controla_vencimiento, stock_minimo")
+         "categoria_id, margen_pct, ubicacion, controla_vencimiento, "
+         "stock_minimo, plu")
 
 
 def _to_producto(row: sqlite3.Row) -> Producto:
@@ -31,6 +32,7 @@ def _to_producto(row: sqlite3.Row) -> Producto:
         ubicacion=row["ubicacion"],
         controla_vencimiento=bool(row["controla_vencimiento"]),
         stock_minimo=Decimal(str(row["stock_minimo"])),
+        plu=row["plu"],
     )
 
 
@@ -39,6 +41,16 @@ def buscar_por_codigo(conn: sqlite3.Connection, codigo: str) -> Producto | None:
     row = conn.execute(
         f"SELECT {_COLS} FROM productos WHERE codigo_barra = ? AND activo = 1",
         (codigo,),
+    ).fetchone()
+    return _to_producto(row) if row else None
+
+
+def buscar_por_plu(conn: sqlite3.Connection, plu: int) -> Producto | None:
+    """Busca el producto por su código en la balanza etiquetadora, que es lo que
+    viaja dentro del código de barras de la etiqueta (ver core/balanza.py)."""
+    row = conn.execute(
+        f"SELECT {_COLS} FROM productos WHERE plu = ? AND activo = 1",
+        (plu,),
     ).fetchone()
     return _to_producto(row) if row else None
 
@@ -74,11 +86,11 @@ def crear(conn: sqlite3.Connection, datos: dict) -> None:
     stock_service con los valores por defecto ya completos)."""
     conn.execute(
         """INSERT INTO productos
-             (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
+             (id, codigo_barra, plu, nombre, categoria_id, es_pesable, unidad_medida,
               costo_compra, precio_venta, margen_pct, ubicacion, stock_actual,
               stock_minimo, controla_stock, controla_vencimiento, activo, updated_at)
            VALUES
-             (:id, :codigo_barra, :nombre, :categoria_id, :es_pesable, :unidad_medida,
+             (:id, :codigo_barra, :plu, :nombre, :categoria_id, :es_pesable, :unidad_medida,
               :costo_compra, :precio_venta, :margen_pct, :ubicacion, :stock_actual,
               :stock_minimo, :controla_stock, :controla_vencimiento, :activo, :updated_at)""",
         datos,
@@ -94,7 +106,7 @@ def actualizar(conn: sqlite3.Connection, datos: dict) -> None:
     """Edita catálogo y precios. No toca stock_actual (eso va por compras/ventas)."""
     conn.execute(
         """UPDATE productos SET
-             codigo_barra = :codigo_barra, nombre = :nombre,
+             codigo_barra = :codigo_barra, plu = :plu, nombre = :nombre,
              categoria_id = :categoria_id, es_pesable = :es_pesable,
              unidad_medida = :unidad_medida, costo_compra = :costo_compra,
              precio_venta = :precio_venta, margen_pct = :margen_pct,
@@ -168,6 +180,26 @@ def actualizar_precio(conn: sqlite3.Connection, producto_id: str, precio) -> Non
         "WHERE id = ?",
         (str(precio), ahora_iso(), producto_id),
     )
+
+
+def actualizar_plu(conn: sqlite3.Connection, producto_id: str, plu) -> None:
+    """Fija el PLU de la balanza etiquetadora. Lo usa el despiece al confirmar
+    una pieza: el corte trae el PLU y recién ahí existe el producto."""
+    conn.execute(
+        "UPDATE productos SET plu = ?, sincronizado = 0, updated_at = ? "
+        "WHERE id = ?",
+        (plu, ahora_iso(), producto_id),
+    )
+
+
+def listar_con_plu(conn: sqlite3.Connection) -> list[Producto]:
+    """Productos cargados en la balanza etiquetadora, ordenados por PLU (que es
+    como están en la balanza)."""
+    rows = conn.execute(
+        f"SELECT {_COLS} FROM productos "
+        "WHERE activo = 1 AND plu IS NOT NULL ORDER BY plu"
+    ).fetchall()
+    return [_to_producto(r) for r in rows]
 
 
 def ubicaciones_distintas(conn: sqlite3.Connection) -> list[str]:
@@ -317,12 +349,14 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
     if actual is not None:
         conn.execute(
             """UPDATE productos SET
-                 codigo_barra = ?, nombre = ?, categoria_id = ?, es_pesable = ?,
+                 codigo_barra = ?, plu = ?, nombre = ?, categoria_id = ?,
+                 es_pesable = ?,
                  unidad_medida = ?, precio_venta = ?, costo_compra = ?,
                  margen_pct = ?, ubicacion = ?, stock_minimo = ?, controla_stock = ?,
                  controla_vencimiento = ?, activo = ?, sincronizado = 1, updated_at = ?
                WHERE id = ?""",
-            (fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
+            (fila["codigo_barra"], fila.get("plu"), fila["nombre"],
+             fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
              _txt_null(fila.get("margen_pct")), fila.get("ubicacion"),
@@ -333,12 +367,14 @@ def sincronizar_desde_nube(conn: sqlite3.Connection, fila: dict) -> None:
     else:
         conn.execute(
             """INSERT INTO productos
-                 (id, codigo_barra, nombre, categoria_id, es_pesable, unidad_medida,
+                 (id, codigo_barra, plu, nombre, categoria_id, es_pesable,
+                  unidad_medida,
                   precio_venta, costo_compra, margen_pct, ubicacion, stock_actual,
                   stock_minimo, controla_stock, controla_vencimiento, activo,
                   sincronizado, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
-            (fila["id"], fila["codigo_barra"], fila["nombre"], fila["categoria_id"],
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
+            (fila["id"], fila["codigo_barra"], fila.get("plu"), fila["nombre"],
+             fila["categoria_id"],
              _ib(fila["es_pesable"]), fila["unidad_medida"],
              _txt(fila["precio_venta"]), _txt(fila["costo_compra"]),
              _txt_null(fila.get("margen_pct")), fila.get("ubicacion"),
