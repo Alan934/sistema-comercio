@@ -22,6 +22,8 @@ Usa solo la librería estándar (urllib), sin dependencias extra.
 """
 import os
 import re
+import socket
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -64,6 +66,36 @@ class UpdaterError(Exception):
     pass
 
 
+def _motivo_de_red(e: Exception) -> str:
+    """Traduce una falla de red a algo accionable.
+
+    Antes todo esto caía en un único "Sin conexión a internet", que en una PC
+    que sí tiene internet manda a revisar justo donde no está el problema: las
+    causas reales suelen ser el reloj de Windows atrasado (el certificado de
+    GitHub "todavía no es válido"), el antivirus interceptando HTTPS, o una
+    conexión lenta que no llega a responder dentro del timeout.
+    """
+    causa = getattr(e, "reason", None) or e
+    if isinstance(causa, ssl.SSLCertVerificationError):
+        return ("No se pudo validar el certificado de GitHub. Casi siempre es "
+                "la fecha y hora de la PC mal puestas: revisá el reloj de "
+                "Windows. Si está bien, puede ser el antivirus revisando las "
+                "conexiones HTTPS.")
+    if isinstance(causa, ssl.SSLError):
+        return f"Falló la conexión segura con GitHub (TLS): {causa}."
+    if isinstance(causa, socket.gaierror):
+        return ("Hay conexión pero no se pudo resolver github.com (DNS). "
+                "Probá abrir github.com en el navegador de esta PC.")
+    if isinstance(causa, TimeoutError):
+        return ("GitHub no respondió a tiempo. Puede ser que la conexión esté "
+                "lenta: esperá un momento y probá de nuevo.")
+    if isinstance(causa, ConnectionError):
+        return ("La conexión con GitHub fue rechazada o cortada "
+                f"({type(causa).__name__}). Puede ser el firewall o el "
+                "antivirus bloqueando Kiosko.exe.")
+    return f"No se pudo conectar con GitHub: {causa}"
+
+
 class _SinRedireccion(urllib.request.HTTPRedirectHandler):
     """No sigue el 302 de /releases/latest: así podemos leer el tag desde el
     header Location sin una request extra (y sin tocar api.github.com)."""
@@ -102,7 +134,7 @@ def buscar_actualizacion() -> dict:
         try:
             # Sin releases, GitHub responde 200 con una página; el 302 con el tag
             # solo aparece cuando hay una publicada.
-            resp = opener.open(req, timeout=8)
+            resp = opener.open(req, timeout=20)
             location = resp.headers.get("Location", "")
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -112,8 +144,8 @@ def buscar_actualizacion() -> dict:
                 location = e.headers.get("Location", "")
             else:
                 return {"ok": False, "motivo": f"GitHub respondió {e.code}."}
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return {"ok": False, "motivo": "Sin conexión a internet."}
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return {"ok": False, "motivo": _motivo_de_red(e)}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"Error inesperado: {e}"}
 
@@ -134,9 +166,12 @@ def _descargar(url: str, destino: Path) -> None:
     """Descarga el .exe y verifica la integridad contra el Content-Length que
     informa el servidor (no hace falta la API para saber el tamaño)."""
     req = urllib.request.Request(url, headers=_HEADERS)
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        esperado = int(resp.headers.get("Content-Length") or 0)
-        datos = resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            esperado = int(resp.headers.get("Content-Length") or 0)
+            datos = resp.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise UpdaterError(_motivo_de_red(e)) from e
     destino.write_bytes(datos)
     if esperado and destino.stat().st_size != esperado:
         destino.unlink(missing_ok=True)
