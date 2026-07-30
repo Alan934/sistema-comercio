@@ -96,6 +96,19 @@ pip install -r requirements-build.txt    # PyInstaller (para compilar)
 > embebido. Por eso siempre hay que subir `APP_VERSION` antes de compilar y usar
 > ese mismo número como tag.
 
+### Si tocás el actualizador (`app/core/updater.py`)
+
+Ojo con esto, que es contraintuitivo: el `.bat` que reemplaza el `.exe` **lo
+escribe la versión que se está cerrando**, no la que entra. Entonces un arreglo
+en ese `.bat` no se prueba actualizando *a* la versión corregida, sino
+actualizando *desde* ella. Para probarlo sin quemar dos releases a ciegas:
+
+1. Publicá la versión con el arreglo (ej. `0.9.6`).
+2. En la PC de prueba, copiá ese `Kiosko.exe` **a mano** (no por el botón), así
+   queda en `0.9.6` sin pasar por el código viejo.
+3. Publicá una versión sin cambios (ej. `0.9.7`) como destino.
+4. Ahí sí, "Buscar actualización" en esa PC ejercita el `.bat` corregido.
+
 ### Cómo actualiza la chica del local
 1. Hace clic en **"Buscar actualización"** (abajo a la izquierda).
 2. Si hay versión nueva, confirma. La app se descarga la versión, **se cierra,
@@ -133,7 +146,8 @@ nunca lo pisa.
 | "Windows protegió su PC" al abrir | Normal (exe sin firmar): *Más información → Ejecutar de todas formas*. |
 | No sincroniza | Revisar internet y que el `.env` tenga bien `NEON_DATABASE_URL`. Igual sigue vendiendo offline. |
 | "Buscar actualización" dice límite alcanzado | GitHub limita consultas anónimas (60/hora por IP). Esperar un rato. |
-| "Failed to load Python DLL … python313.dll" justo al actualizar | El `.exe` nuevo heredaba las variables `_PYI_*` del proceso viejo y buscaba la DLL en su carpeta `%TEMP%\_MEIxxxxx`, ya borrada. **La actualización sí se aplicó**: cerrar el cartel y abrir `Kiosko.exe` a mano. Corregido en v0.9.3 (el actualizador limpia esas variables antes de reabrir). |
+| "Failed to load Python DLL … python313.dll" justo al actualizar | El `.exe` nuevo heredaba las variables `_PYI_*` del proceso viejo y buscaba la DLL en su carpeta `%TEMP%\_MEIxxxxx`, ya borrada. **La actualización sí se aplicó**: cerrar el cartel y abrir `Kiosko.exe` a mano. Corregido en v0.9.4. |
+| "No se pudo validar el certificado de GitHub" con la fecha y hora bien | La app validaba solo contra el almacén de certificados de Windows, y Windows baja los raíces que le faltan únicamente cuando los pide el navegador (nunca Python). Con Chrome o Firefox, que usan su propio almacén, el raíz no llega nunca al de Windows. Corregido en v0.9.6: si Windows no puede validar, se reintenta con los certificados que trae el `.exe`. Si el mensaje dice que fallaron **los dos**, es el antivirus interceptando HTTPS: desactivarle el escaneo SSL o poner `Kiosko.exe` como excepción. |
 | Quiero empezar de cero | Cerrar la app y borrar `data\kiosko.db`. Al reabrir se crea vacía. |
 | Mover la app a otra PC | Copiar toda la carpeta `C:\Kiosko\` (exe + .env + data). |
 
