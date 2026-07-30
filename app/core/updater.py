@@ -77,10 +77,14 @@ def _motivo_de_red(e: Exception) -> str:
     """
     causa = getattr(e, "reason", None) or e
     if isinstance(causa, ssl.SSLCertVerificationError):
-        return ("No se pudo validar el certificado de GitHub. Casi siempre es "
-                "la fecha y hora de la PC mal puestas: revisá el reloj de "
-                "Windows. Si está bien, puede ser el antivirus revisando las "
-                "conexiones HTTPS.")
+        # Llegar acá significa que fallaron los dos intentos de _abrir(): ni el
+        # almacén de Windows ni el bundle propio validaron el certificado. Ahí
+        # ya no es un raíz faltante, así que se apunta a las otras dos causas.
+        return ("No se pudo validar el certificado de GitHub, ni con los "
+                "certificados de Windows ni con los que trae la app. Revisá la "
+                "fecha y hora de la PC; si están bien, casi seguro es el "
+                "antivirus revisando las conexiones HTTPS (hay que desactivar "
+                "ese escaneo o poner Kiosko.exe como excepción).")
     if isinstance(causa, ssl.SSLError):
         return f"Falló la conexión segura con GitHub (TLS): {causa}."
     if isinstance(causa, socket.gaierror):
@@ -94,6 +98,57 @@ def _motivo_de_red(e: Exception) -> str:
                 f"({type(causa).__name__}). Puede ser el firewall o el "
                 "antivirus bloqueando Kiosko.exe.")
     return f"No se pudo conectar con GitHub: {causa}"
+
+
+def _contextos_ssl():
+    """Contextos SSL a probar, en orden.
+
+    1. El de siempre: valida contra el almacén de certificados de Windows.
+    2. El bundle de certifi, que viaja adentro del .exe.
+
+    El segundo hace falta porque Windows descarga los certificados raíz que le
+    faltan solo cuando los necesita, y ese mecanismo lo dispara el navegador
+    (schannel), nunca Python/OpenSSL. Peor todavía si en esa PC navegan con
+    Chrome o Firefox, que traen su propio almacén y no tocan el de Windows: el
+    navegador entra a github.com sin problema y la app falla con "certificate
+    verify failed" aunque la fecha y hora estén perfectas.
+
+    El orden no es intercambiable: si un antivirus intercepta HTTPS con su
+    propio raíz instalado en Windows, el primero funciona y el de certifi
+    fallaría. Probando Windows primero se cubren los dos casos.
+    """
+    yield ssl.create_default_context()
+    try:
+        import certifi
+        yield ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # noqa: BLE001 - sin certifi, o su cacert.pem ilegible
+        # Se corta sin yield: el llamador reporta el error original del primer
+        # intento, que es el útil, en vez de uno sobre el bundle de respaldo.
+        return
+
+
+def _abrir(url: str, timeout: int, sin_redireccion: bool = False):
+    """Abre la URL reintentando con el bundle propio si falla la validación del
+    certificado. Cualquier otro error (incluido el HTTPError del 302, que el
+    llamador necesita para leer el tag) se propaga tal cual."""
+    req = urllib.request.Request(url, headers=_HEADERS)
+    ultimo = None
+    for ctx in _contextos_ssl():
+        handlers = [urllib.request.HTTPSHandler(context=ctx)]
+        if sin_redireccion:
+            handlers.append(_SinRedireccion)
+        try:
+            return urllib.request.build_opener(*handlers).open(req, timeout=timeout)
+        except urllib.error.URLError as e:
+            # HTTPError también es URLError, pero su .reason es un texto: solo
+            # se reintenta cuando la causa es del lado de TLS. Se toma SSLError
+            # entero y no solo SSLCertVerificationError porque un almacén de
+            # certificados roto puede fallar de varias formas, y reintentar con
+            # el bundle propio no cuesta nada.
+            if not isinstance(getattr(e, "reason", None), ssl.SSLError):
+                raise
+            ultimo = e
+    raise ultimo
 
 
 class _SinRedireccion(urllib.request.HTTPRedirectHandler):
@@ -129,12 +184,10 @@ def buscar_actualizacion() -> dict:
       {ok:False, motivo}
     """
     try:
-        req = urllib.request.Request(LATEST_URL, headers=_HEADERS)
-        opener = urllib.request.build_opener(_SinRedireccion)
         try:
             # Sin releases, GitHub responde 200 con una página; el 302 con el tag
             # solo aparece cuando hay una publicada.
-            resp = opener.open(req, timeout=20)
+            resp = _abrir(LATEST_URL, timeout=20, sin_redireccion=True)
             location = resp.headers.get("Location", "")
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -165,9 +218,8 @@ def buscar_actualizacion() -> dict:
 def _descargar(url: str, destino: Path) -> None:
     """Descarga el .exe y verifica la integridad contra el Content-Length que
     informa el servidor (no hace falta la API para saber el tamaño)."""
-    req = urllib.request.Request(url, headers=_HEADERS)
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with _abrir(url, timeout=120) as resp:
             esperado = int(resp.headers.get("Content-Length") or 0)
             datos = resp.read()
     except (urllib.error.URLError, TimeoutError, OSError) as e:

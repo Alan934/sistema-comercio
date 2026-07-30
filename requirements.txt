@@ -6,3 +6,7 @@ psycopg[binary]>=3.2
 
 # Lectura de credenciales desde .env
 python-dotenv>=1.0
+
+# Certificados raíz propios: respaldo para validar HTTPS cuando el almacén de
+# Windows de la PC del local no tiene el raíz de GitHub (ver updater.py).
+certifi>=2024.2.2
