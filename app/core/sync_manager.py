@@ -13,15 +13,15 @@ Idempotencia: en la nube usamos INSERT ... ON CONFLICT (id) DO NOTHING. Si una
 venta llegó a subir pero falló el marcado local, el reintento no la duplica.
 """
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from app.core import db_local, db_cloud, network
+from app.core import db_local, db_cloud, licencia, network
 from app.repositories import (producto_repo, venta_repo, compra_repo,
                              cuenta_repo, gasto_repo, cliente_repo,
                              proveedor_repo, categoria_repo, usuario_repo,
                              cierre_repo, res_repo, pieza_repo, corte_repo,
-                             movimiento_repo, lote_repo)
+                             movimiento_repo, lote_repo, suscripcion_repo)
 from config import settings
 
 try:
@@ -42,6 +42,11 @@ def _dt(x):
 
 def _num_null(x):
     return Decimal(str(x)) if x is not None else None
+
+
+def _fch(x):
+    """Texto ISO -> date (columnas DATE de Postgres)."""
+    return date.fromisoformat(str(x)[:10]) if x else None
 
 
 # --- PULL: nube -> local ----------------------------------------------------
@@ -601,6 +606,119 @@ def _push_gastos(local, cloud) -> int:
     return len(pendientes)
 
 
+# --- Suscripción: la nube manda ---------------------------------------------
+# Es la única parte del sistema donde el pull NO fusiona sino que REEMPLAZA lo
+# local. La suscripción se cobra desde la PC del super administrador y el
+# comercio solo la consulta: si alguien edita la base local para regalarse
+# meses, el primer ciclo de sincronización lo deshace.
+
+def fecha_local_del_servidor(ahora) -> date | None:
+    """Instante del servidor (timestamptz) -> fecha del DÍA LOCAL de esta PC.
+
+    Toda la suscripción razona en días locales. Neon corre en UTC, así que un
+    `CURRENT_DATE` del servidor adelanta un día desde las 21:00 en Argentina;
+    convertir el instante a la zona de la máquina deja las dos fechas alineadas.
+    """
+    if ahora is None:
+        return None
+    if getattr(ahora, "tzinfo", None) is not None:
+        return ahora.astimezone().date()
+    return ahora.date()
+
+
+def _push_suscripcion(local, cloud) -> int:
+    """Sube la configuración y los pagos pendientes (upsert: la anulación de un
+    pago tiene que viajar)."""
+    cfg = suscripcion_repo.config_pendiente(local)
+    pagos = suscripcion_repo.pagos_pendientes(local)
+    if cfg is None and not pagos:
+        return 0
+    with cloud.transaction():
+        with cloud.cursor() as cur:
+            if cfg is not None:
+                cur.execute(
+                    """INSERT INTO suscripcion
+                         (id, comercio, fecha_inicio, monto_mensual, gracia_dias,
+                          datos_pago, estado_manual, firma, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         comercio = EXCLUDED.comercio,
+                         fecha_inicio = EXCLUDED.fecha_inicio,
+                         monto_mensual = EXCLUDED.monto_mensual,
+                         gracia_dias = EXCLUDED.gracia_dias,
+                         datos_pago = EXCLUDED.datos_pago,
+                         estado_manual = EXCLUDED.estado_manual,
+                         firma = EXCLUDED.firma,
+                         updated_at = EXCLUDED.updated_at""",
+                    (cfg["id"], cfg["comercio"], _fch(cfg["fecha_inicio"]),
+                     _num(cfg["monto_mensual"]), cfg["gracia_dias"],
+                     cfg["datos_pago"], cfg["estado_manual"], cfg["firma"],
+                     _dt(cfg["updated_at"])),
+                )
+            for p in pagos:
+                cur.execute(
+                    """INSERT INTO suscripcion_pagos
+                         (id, fecha, meses, monto, metodo, nota, registrado_por,
+                          anulado, firma, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                         anulado = EXCLUDED.anulado,
+                         nota = EXCLUDED.nota,
+                         firma = EXCLUDED.firma""",
+                    (p["id"], _dt(p["fecha"]), p["meses"], _num(p["monto"]),
+                     p["metodo"], p["nota"], p["registrado_por"],
+                     bool(p["anulado"]), p["firma"], _dt(p["created_at"])),
+                )
+    if cfg is not None:
+        suscripcion_repo.marcar_config_sincronizada(local)
+    for p in pagos:
+        suscripcion_repo.marcar_pago_sincronizado(local, p["id"])
+    local.commit()
+    return (1 if cfg is not None else 0) + len(pagos)
+
+
+def _pull_suscripcion(local, cloud) -> int:
+    """Baja la suscripción y deja la copia local IGUAL a la de la nube: pisa la
+    configuración, actualiza los pagos y borra los que allá no existen.
+
+    Si la nube todavía no tiene la suscripción configurada no toca nada: sin esa
+    guarda, una base de nube nueva o vacía borraría el historial del comercio.
+    """
+    aplicados = 0
+    with cloud.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT * FROM suscripcion LIMIT 1")
+        cfg = cur.fetchone()
+        if cfg is None:
+            return 0
+        suscripcion_repo.reemplazar_config_desde_nube(local, cfg)
+        aplicados += 1
+
+        cur.execute("SELECT * FROM suscripcion_pagos")
+        pagos = cur.fetchall()
+        for p in pagos:
+            suscripcion_repo.reemplazar_pago_desde_nube(local, p)
+            aplicados += 1
+        aplicados += suscripcion_repo.borrar_pagos_ajenos(
+            local, {p["id"] for p in pagos})
+
+        # La fecha del servidor es la única que el comercio no puede tocar:
+        # además de impedir que atrasen el reloj, repara una marca de agua que
+        # hubiera quedado adelantada por un reloj mal puesto.
+        #
+        # Se pide el INSTANTE (timestamptz) y se pasa a la hora local de esta PC,
+        # NO `CURRENT_DATE`: Neon corre en UTC, así que después de las 21:00 en
+        # Argentina ya está en el día siguiente y la marca se adelantaba un día
+        # todas las noches (y como nunca retrocede, quedaba corrida para siempre).
+        cur.execute("SELECT now() AS ahora")
+        hoy = fecha_local_del_servidor(cur.fetchone()["ahora"])
+        if hoy is not None:
+            suscripcion_repo.actualizar_marca(local, hoy.isoformat())
+
+    local.commit()
+    licencia.guardar_sello(suscripcion_repo.obtener_config(local))
+    return aplicados
+
+
 # --- Ciclo completo ---------------------------------------------------------
 
 def sincronizar_ahora() -> dict:
@@ -637,10 +755,13 @@ def sincronizar_ahora() -> dict:
         mov_stock = _push_movimientos(local, cloud)
         gastos = _push_gastos(local, cloud)
         cierres = _push_cierres(local, cloud)
+        susc = _push_suscripcion(local, cloud)
         # BAJAR todo lo que falte (pobla una PC nueva o restaurada).
         bajados = _pull_catalogo(local, cloud)
         # El stock converge acá: aplica los deltas del ledger de las otras PCs.
         mov_stock_bajados = _pull_movimientos(local, cloud)
+        # La suscripción va al final y no fusiona: deja lo local igual a la nube.
+        susc_bajada = _pull_suscripcion(local, cloud)
         return {"ok": True,
                 "categorias_subidas": cat,
                 "productos_subidos": prod,
@@ -656,8 +777,10 @@ def sincronizar_ahora() -> dict:
                 "movimientos_stock_subidos": mov_stock,
                 "gastos_subidos": gastos,
                 "cierres_subidos": cierres,
+                "suscripcion_subida": susc,
                 "bajados_de_nube": bajados,
-                "movimientos_stock_bajados": mov_stock_bajados}
+                "movimientos_stock_bajados": mov_stock_bajados,
+                "suscripcion_bajada": susc_bajada}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "motivo": f"error durante la sync: {e}"}
     finally:

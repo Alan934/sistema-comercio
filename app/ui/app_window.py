@@ -12,7 +12,10 @@ from app.core import updater
 from app.ui import theme
 from app.ui.scan_catcher import ScanCatcher
 from app.ui.dialogs import notificar
-from app.models.usuario import SECCIONES_POR_ROL, etiqueta_rol
+from app.models.usuario import (SECCIONES_POR_ROL, bloqueada_por_suscripcion,
+                                etiqueta_rol)
+from app.services import suscripcion_service
+from app.ui.views.suscripcion_view import SuscripcionView, colores, mensaje_estado
 from app.ui.views.ventas_view import VentasView
 from app.ui.views.stock_view import StockView
 from app.ui.views.carne_view import CarneView
@@ -55,10 +58,26 @@ class AppWindow(ctk.CTk):
                      font=theme.fuente(17, "bold")).pack(side="left", padx=10)
 
         # --- Área de contenido ---
+        # Fila 0: banner de la suscripción (oculto salvo que haya algo que
+        # avisar). Fila 1: las vistas apiladas.
         contenido = ctk.CTkFrame(self, fg_color=theme.APP_BG, corner_radius=0)
         contenido.grid(row=0, column=1, sticky="nsew")
-        contenido.grid_rowconfigure(0, weight=1)
+        contenido.grid_rowconfigure(1, weight=1)
         contenido.grid_columnconfigure(0, weight=1)
+
+        self._banner = ctk.CTkFrame(contenido, corner_radius=0,
+                                    fg_color=theme.ROJO_BG)
+        self._banner.grid_columnconfigure(0, weight=1)
+        self._banner_lbl = ctk.CTkLabel(
+            self._banner, text="", anchor="w", justify="left",
+            font=theme.fuente(13, "bold"), text_color=theme.ROJO)
+        self._banner_lbl.grid(row=0, column=0, sticky="w", padx=18, pady=10)
+        self._banner_btn = ctk.CTkButton(
+            self._banner, text="Ver suscripción", width=140, height=30,
+            corner_radius=8, font=theme.fuente(12), fg_color=theme.PRIMARY,
+            hover_color=theme.PRIMARY_HOVER,
+            command=lambda: self.mostrar("suscripcion"))
+        self._banner_btn.grid(row=0, column=1, padx=(8, 18), pady=8)
 
         # Overlay "Cargando…": se muestra sobre el contenido apenas se hace click
         # en una sección, ANTES de reconstruir la tabla (que bloquea un momento),
@@ -80,32 +99,39 @@ class AppWindow(ctk.CTk):
             "reportes": lambda: ReportesView(contenido),
             "cierres": lambda: CierresView(contenido, self.usuario),
             "usuarios": lambda: UsuariosView(contenido, self.usuario),
+            "suscripcion": lambda: SuscripcionView(contenido, self.usuario),
         }
         etiquetas = self._etiquetas = {
             "caja": "Caja", "stock": "Stock", "carne": "Carne",
             "proveedores": "Proveedores", "clientes": "Clientes",
             "reportes": "Reportes", "cierres": "Cierre de caja",
-            "usuarios": "Usuarios"}
+            "usuarios": "Usuarios", "suscripcion": "Suscripción"}
         # Íconos (emoji: peso 0, no requieren imágenes ni Pillow).
         iconos = {"caja": "🛒", "stock": "📦", "carne": "🥩", "proveedores": "🚚",
                   "clientes": "👥", "reportes": "📊", "cierres": "💰",
-                  "usuarios": "👤"}
+                  "usuarios": "👤", "suscripcion": "💳"}
         # Atajos de teclado para saltar entre secciones (Ctrl+1..8). La tecla es
         # fija por sección (no depende del rol), así la memoria muscular no cambia
         # aunque un rol tenga menos secciones. Se muestran en el botón y se
         # enlazan más abajo.
         atajos = {"caja": "1", "stock": "2", "carne": "3", "proveedores": "4",
                   "clientes": "5", "reportes": "6", "cierres": "7",
-                  "usuarios": "8"}
+                  "usuarios": "8", "suscripcion": "9"}
         secciones = SECCIONES_POR_ROL.get(usuario.rol, ["caja"])
 
         # Bandera anti-doble-click: mientras una sección se está cargando
         # ignoramos los clicks que llegan (ver mostrar()).
         self._cargando = False
+        # ¿Lo que se ve ahora es la pantalla de bloqueo por falta de pago?
+        self._mostrando_bloqueo = False
 
         self._vistas = {}
         self._botones = {}
         self._hints = {}
+        # Texto del botón en sus dos variantes: normal y con candado (cuando la
+        # sección queda cerrada por falta de pago). Se cambia el ícono en vez de
+        # agregar uno al final para no pisar la pista del atajo.
+        self._nav_txt = {}
         for clave in secciones:
             vista = constructores[clave]()
             # Fondo OPACO (mismo color que el área de contenido): las vistas se
@@ -115,8 +141,10 @@ class AppWindow(ctk.CTk):
             # pintarse, se ve la vista anterior transparentándose por detrás. Un
             # fondo opaco del mismo color se ve igual pero oculta a las demás.
             vista.configure(fg_color=theme.APP_BG)
-            vista.grid(row=0, column=0, sticky="nsew")
+            vista.grid(row=1, column=0, sticky="nsew")
             self._vistas[clave] = vista
+            self._nav_txt[clave] = (f"{iconos[clave]}   {etiquetas[clave]}",
+                                    f"🔒   {etiquetas[clave]}")
             btn = ctk.CTkButton(
                 side, text=f"{iconos[clave]}   {etiquetas[clave]}", anchor="w",
                 height=44, corner_radius=8, font=theme.fuente(14),
@@ -181,7 +209,26 @@ class AppWindow(ctk.CTk):
                      justify="left", anchor="w", text_color=theme.NAV_TXT,
                      font=theme.fuente(12)).pack(side="left", padx=8)
 
+        # --- Pantalla de bloqueo por suscripción impaga ---
+        # Se apila en la misma celda que las vistas y se trae al frente cuando
+        # la sección elegida no está permitida (ver mostrar()).
+        self._bloqueo = ctk.CTkFrame(contenido, fg_color=theme.APP_BG,
+                                     corner_radius=0)
+        self._bloqueo.grid(row=1, column=0, sticky="nsew")
+        self._bloqueo.grid_columnconfigure(0, weight=1)
+        self._bloqueo.grid_rowconfigure(0, weight=1)
+        self._bloqueo_card = ctk.CTkFrame(self._bloqueo, fg_color=theme.CARD_BG,
+                                          corner_radius=16)
+        self._bloqueo_card.grid(row=0, column=0, padx=40, pady=40)
+
+        # Estado de la suscripción: se consulta al abrir y cada tanto (el hilo
+        # de sincronización puede traer un pago nuevo o una suspensión).
+        self._susc = suscripcion_service.estado_actual()
+        self._refrescar_suscripcion()
+
         self.mostrar(secciones[0])
+        if self.usuario.es_admin and not self.usuario.es_super_admin:
+            self.after(800, self._aviso_suscripcion)
 
         # --- Captura global del lector de código de barra ---
         # Escanear funciona en Caja/Stock sin importar dónde esté el foco: el
@@ -246,11 +293,18 @@ class AppWindow(ctk.CTk):
 
         # 2) Trabajo pesado (recarga de datos + reconstrucción de la tabla),
         #    tapado por el overlay para que no se vea el reacomodo de columnas.
+        #    Si la suscripción está suspendida, las secciones no esenciales
+        #    muestran la pantalla de bloqueo en lugar de su vista.
         try:
-            if hasattr(vista, "al_mostrar"):
-                vista.al_mostrar()
-            vista.update_idletasks()
-            vista.tkraise()
+            self._mostrando_bloqueo = self._seccion_bloqueada(clave)
+            if self._mostrando_bloqueo:
+                self._pintar_bloqueo()
+                self._bloqueo.tkraise()
+            else:
+                if hasattr(vista, "al_mostrar"):
+                    vista.al_mostrar()
+                vista.update_idletasks()
+                vista.tkraise()
         except Exception:
             self._terminar_transicion()
             raise
@@ -277,6 +331,87 @@ class AppWindow(ctk.CTk):
     def _terminar_transicion(self) -> None:
         self._overlay.place_forget()
         self._cargando = False
+
+    # --- Suscripción del software ------------------------------------------
+
+    def _seccion_bloqueada(self, clave: str) -> bool:
+        """True si esta sección está cerrada por falta de pago. El super
+        administrador (quien cobra) nunca queda bloqueado."""
+        if self.usuario.es_super_admin or not self._susc.suspendida:
+            return False
+        return bloqueada_por_suscripcion(clave)
+
+    def _refrescar_suscripcion(self) -> None:
+        """Relee el estado, actualiza el banner y los candados del menú, y se
+        reprograma. Corre cada 10 minutos porque el hilo de sincronización puede
+        traer un pago nuevo (o una suspensión) mientras la app está abierta."""
+        try:
+            self._susc = suscripcion_service.estado_actual()
+        except Exception:  # noqa: BLE001  (la app nunca se cae por esto)
+            pass
+        else:
+            self._pintar_banner()
+            self._pintar_candados()
+            # Si la sección en pantalla se acaba de bloquear (o de liberar,
+            # porque entró el pago), se vuelve a mostrar.
+            activa = getattr(self, "_activa", None)
+            if (activa and not self._cargando
+                    and self._seccion_bloqueada(activa) != self._mostrando_bloqueo):
+                self.mostrar(activa)
+        self.after(10 * 60 * 1000, self._refrescar_suscripcion)
+
+    def _pintar_banner(self) -> None:
+        """Franja de aviso arriba del contenido. Solo la ven los administradores
+        (al empleado no le corresponde el tema de la suscripción)."""
+        if not self.usuario.es_admin or not self._susc.necesita_aviso:
+            self._banner.grid_remove()
+            return
+        color, fondo, icono = colores(self._susc.estado)
+        titulo, detalle = mensaje_estado(self._susc)
+        self._banner.configure(fg_color=fondo)
+        self._banner_lbl.configure(text=f"{icono}  {titulo} — {detalle}",
+                                   text_color=color)
+        self._banner.grid(row=0, column=0, sticky="ew")
+
+    def _pintar_candados(self) -> None:
+        """Marca con 🔒 las secciones cerradas por falta de pago."""
+        for clave, btn in self._botones.items():
+            normal, con_candado = self._nav_txt[clave]
+            btn.configure(text=con_candado if self._seccion_bloqueada(clave)
+                          else normal)
+
+    def _pintar_bloqueo(self) -> None:
+        for w in self._bloqueo_card.winfo_children():
+            w.destroy()
+        datos = suscripcion_service.resumen()
+        _, detalle = mensaje_estado(self._susc)
+        ctk.CTkLabel(self._bloqueo_card, text="🔒", font=theme.fuente(46)).pack(
+            pady=(30, 6))
+        ctk.CTkLabel(self._bloqueo_card, text="Sección bloqueada",
+                     font=theme.fuente(24, "bold"), text_color=theme.TXT).pack()
+        ctk.CTkLabel(self._bloqueo_card, text=detalle, wraplength=520,
+                     justify="center", font=theme.fuente(14),
+                     text_color=theme.TXT_MUTED).pack(padx=40, pady=(8, 4))
+        if datos["datos_pago"]:
+            ctk.CTkLabel(self._bloqueo_card, text="Dónde pagar",
+                         font=theme.fuente(12), text_color=theme.TXT_MUTED).pack(
+                pady=(14, 0))
+            ctk.CTkLabel(self._bloqueo_card, text=datos["datos_pago"],
+                         wraplength=520, justify="center",
+                         font=theme.fuente(17, "bold"),
+                         text_color=theme.TXT).pack(padx=40)
+        ctk.CTkButton(self._bloqueo_card, text="Ver la suscripción", height=42,
+                      width=200, corner_radius=10, font=theme.fuente(14),
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+                      command=lambda: self.mostrar("suscripcion")).pack(
+            pady=(20, 30))
+
+    def _aviso_suscripcion(self) -> None:
+        """Modal de cortesía al entrar, una sola vez por sesión."""
+        if not self._susc.vencida:
+            return
+        titulo, detalle = mensaje_estado(self._susc)
+        notificar.informar(self, titulo, detalle, tipo="alerta")
 
     def _hint_hover(self, clave: str, entrando: bool) -> None:
         """Acompaña el hover del botón: pinta el fondo de la pista con el color

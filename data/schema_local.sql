@@ -262,6 +262,42 @@ CREATE TABLE IF NOT EXISTS gastos (
     created_at    TEXT NOT NULL
 );
 
+-- ---------- Suscripción del software ----------------------------------------
+-- Licencia mensual que el super administrador le cobra al comercio.
+-- La cobertura NO se guarda: se DERIVA sumando los meses de los pagos válidos
+-- a partir de fecha_inicio. Así el orden en que llegan los pagos no importa y
+-- no hay períodos con huecos ni solapamientos que reparar.
+-- La autoridad de estas dos tablas es la NUBE: el pull las reemplaza (ver
+-- sync_manager._pull_suscripcion) y cada fila va firmada (app/core/licencia.py),
+-- para que editar la base a mano no regale meses.
+CREATE TABLE IF NOT EXISTS suscripcion (
+    id                 TEXT PRIMARY KEY,           -- siempre 'DEFAULT' (fila única)
+    comercio           TEXT,
+    fecha_inicio       TEXT,                       -- ISO YYYY-MM-DD: primer día cubierto
+    monto_mensual      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    gracia_dias        INTEGER NOT NULL DEFAULT 30,
+    datos_pago         TEXT,                       -- alias/CBU/contacto que ve el comercio
+    estado_manual      TEXT,                       -- NULL = automático | ACTIVA | SUSPENDIDA
+    ultima_fecha_vista TEXT,                       -- marca de agua: el reloj no puede retroceder
+    firma              TEXT,
+    sincronizado       INTEGER NOT NULL DEFAULT 0,
+    updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS suscripcion_pagos (
+    id             TEXT PRIMARY KEY,
+    fecha          TEXT NOT NULL,                  -- cuándo se cobró (ISO local con offset)
+    meses          INTEGER NOT NULL,               -- 1..12 meses de crédito que compra
+    monto          NUMERIC(12,2) NOT NULL DEFAULT 0,
+    metodo         TEXT NOT NULL DEFAULT 'EFECTIVO',   -- EFECTIVO | TRANSFERENCIA
+    nota           TEXT,
+    registrado_por TEXT,                           -- usuario que lo cargó
+    anulado        INTEGER NOT NULL DEFAULT 0,
+    firma          TEXT,
+    sincronizado   INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL
+);
+
 -- ---------- Índices ---------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_mov_stock_sync ON movimientos_stock(sincronizado);
 CREATE INDEX IF NOT EXISTS idx_mov_stock_prod ON movimientos_stock(producto_id);
@@ -273,5 +309,6 @@ CREATE INDEX IF NOT EXISTS idx_ventas_sync  ON ventas(sincronizado);
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_cm_entidad   ON cuenta_movimientos(entidad_tipo, entidad_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_venc   ON lotes(fecha_vencimiento);
+CREATE INDEX IF NOT EXISTS idx_susc_pagos_sync ON suscripcion_pagos(sincronizado);
 CREATE INDEX IF NOT EXISTS idx_piezas_res   ON piezas(res_id);
 CREATE INDEX IF NOT EXISTS idx_cortes_pieza ON cortes(pieza_id);

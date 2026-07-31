@@ -238,6 +238,36 @@ CREATE TABLE IF NOT EXISTS usuarios (
     updated_at    TIMESTAMPTZ NOT NULL
 );
 
+-- ---------- Suscripción del software ----------------------------------------
+-- Copia autoritativa: lo que está acá es lo que vale. El comercio la baja en
+-- cada sync y su copia local se reemplaza (ver sync_manager._pull_suscripcion).
+-- Sin flag `sincronizado` (igual criterio que el resto de las tablas cloud).
+CREATE TABLE IF NOT EXISTS suscripcion (
+    id                 TEXT PRIMARY KEY,
+    comercio           TEXT,
+    fecha_inicio       DATE,
+    monto_mensual      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    gracia_dias        INTEGER NOT NULL DEFAULT 30,
+    datos_pago         TEXT,
+    estado_manual      TEXT,
+    ultima_fecha_vista DATE,
+    firma              TEXT,
+    updated_at         TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS suscripcion_pagos (
+    id             TEXT PRIMARY KEY,
+    fecha          TIMESTAMPTZ NOT NULL,
+    meses          INTEGER NOT NULL,
+    monto          NUMERIC(12,2) NOT NULL DEFAULT 0,
+    metodo         TEXT NOT NULL DEFAULT 'EFECTIVO',
+    nota           TEXT,
+    registrado_por TEXT,
+    anulado        BOOLEAN NOT NULL DEFAULT FALSE,
+    firma          TEXT,
+    created_at     TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_cloud_mov_stock_prod ON movimientos_stock(producto_id);
 -- El índice único de productos.plu se crea en db_cloud.asegurar_schema, después
 -- del ALTER que agrega la columna a las tablas que ya existían en Neon.

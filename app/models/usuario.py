@@ -15,12 +15,22 @@ ETIQUETA_ROL = {
 
 # Qué secciones ve cada rol (claves de las vistas del menú lateral).
 _SECCIONES_ADMIN = ["caja", "stock", "carne", "proveedores", "clientes",
-                    "reportes", "cierres", "usuarios"]
+                    "reportes", "cierres", "usuarios", "suscripcion"]
 SECCIONES_POR_ROL = {
     SUPER_ADMIN: _SECCIONES_ADMIN,
     ADMIN: _SECCIONES_ADMIN,
     EMPLEADO: ["caja", "clientes"],
 }
+
+# Qué sigue funcionando con la suscripción suspendida: la caja y los clientes,
+# para no dejar al comercio sin poder vender ni cobrar un fiado. El resto se
+# bloquea hasta regularizar el pago. La sección de suscripción queda accesible
+# a propósito: es donde se ve cuánto y dónde pagar.
+SECCIONES_SIN_SUSCRIPCION = ["caja", "clientes", "suscripcion"]
+
+
+def bloqueada_por_suscripcion(seccion: str) -> bool:
+    return seccion not in SECCIONES_SIN_SUSCRIPCION
 
 
 def etiqueta_rol(rol: str) -> str:
